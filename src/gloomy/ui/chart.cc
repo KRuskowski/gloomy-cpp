@@ -68,6 +68,15 @@ auto LowerIndex(std::span<const double> x, double v) -> std::size_t {
                                   x.begin());
 }
 
+// Index of the x nearest to v; x must not be empty.
+auto NearestIndex(std::span<const double> x, double v) -> std::size_t {
+  std::size_t i = std::min(x.size() - 1, LowerIndex(x, v));
+  if (i > 0 && v - x[i - 1] < x[i] - v) {
+    --i;
+  }
+  return i;
+}
+
 // Everything the painter needs, computed once per frame.
 struct Plot {
   Rect area;
@@ -151,7 +160,7 @@ void PaintChart(PaintContext &pc, const Rect &r,
     const float x = std::round(p.X(v)) + 0.5F;
     list.Line({x, p.area.y0}, {x, p.area.y1}, 1.0F, c.divider);
     pc.text.DrawFitted(list,
-                       TickText(v, xs),
+                       options.x_format ? options.x_format(v) : TickText(v, xs),
                        t.fonts.sans,
                        small,
                        {x - 40, p.area.y1 + 2, x + 40, p.area.y1 + 16},
@@ -252,6 +261,12 @@ void PaintChart(PaintContext &pc, const Rect &r,
       }
       const float px = p.X(s.x[i]);
       const float py = p.Y(axis, s.y[i]);
+      // A point between gaps has no line to show it.
+      const bool gap_before = i == 0 || !std::isfinite(s.y[i - 1]);
+      const bool gap_after = i + 1 >= n || !std::isfinite(s.y[i + 1]);
+      if (gap_before && gap_after) {
+        list.FillCircle({px, py}, 2.0F, color);
+      }
       const int col = static_cast<int>(std::floor(px));
       if (col != column) {
         flush();
@@ -283,9 +298,9 @@ void PaintChart(PaintContext &pc, const Rect &r,
       if (n == 0 || state.hidden.contains(std::string(s.name))) {
         continue;
       }
-      std::size_t i = std::min(n - 1, LowerIndex(s.x.first(n), xv));
-      if (i > 0 && xv - s.x[i - 1] < s.x[i] - xv) {
-        --i;
+      const std::size_t i = NearestIndex(s.x.first(n), xv);
+      if (!std::isfinite(s.y[i])) {
+        continue;
       }
       const int axis = s.axis == 1 ? 1 : 0;
       list.FillCircle(
@@ -459,7 +474,7 @@ void LineChart(Context &ctx, std::string_view label,
     const double xs = NiceStep(plot.x1 - plot.x0, 50);
     Label(ctx,
           std::string(options.x_label.empty() ? "x" : options.x_label) + " " +
-              TickText(xv, xs),
+              (options.x_format ? options.x_format(xv) : TickText(xv, xs)),
           head);
     for (std::size_t si = 0; si < series.size(); ++si) {
       const ChartSeries &s = series[si];
@@ -467,17 +482,16 @@ void LineChart(Context &ctx, std::string_view label,
       if (n == 0 || state.hidden.contains(std::string(s.name))) {
         continue;
       }
-      std::size_t i = std::min(n - 1, LowerIndex(s.x.first(n), xv));
-      if (i > 0 && xv - s.x[i - 1] < s.x[i] - xv) {
-        --i;
-      }
+      const std::size_t i = NearestIndex(s.x.first(n), xv);
       const Range &yr = plot.y[s.axis == 1 ? 1 : 0];
       LabelOptions line;
       line.size = t.metrics.small_font_size + 1;
       line.color = SeriesColor(t, s, si);
       Label(ctx,
             std::string(s.name) + "  " +
-                TickText(s.y[i], NiceStep(yr.hi - yr.lo, 100)),
+                (std::isfinite(s.y[i])
+                     ? TickText(s.y[i], NiceStep(yr.hi - yr.lo, 100))
+                     : std::string("no data")),
             line);
     }
     ctx.EndLayer();
