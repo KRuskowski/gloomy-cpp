@@ -152,7 +152,9 @@ TEST_F(ChartImageTest, PricesWithSecondAxisAndCrosshair) {
                          target,
                          h.ctx().draw_lists(),
                          h.ctx().theme().colors.background),
-      "chart");
+      // Thousands of thin antialiased segments: drivers may differ by a
+      // few levels in a few pixels (seen on NVIDIA vs lavapipe).
+      "chart", 2, 8);
 }
 
 }  // namespace
