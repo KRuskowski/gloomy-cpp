@@ -154,7 +154,63 @@ TEST_F(ChartImageTest, PricesWithSecondAxisAndCrosshair) {
                          h.ctx().theme().colors.background),
       // Thousands of thin antialiased segments: drivers may differ by a
       // few levels in a few pixels (seen on NVIDIA vs lavapipe).
-      "chart", 2, 8);
+      "chart",
+      2,
+      8);
+}
+
+TEST_F(ChartImageTest, GapsBreakTheLineAndLonePointsShowAsDots) {
+  UiHarness h({720, 300});
+  const double nan = std::nan("");
+  // Hours with reports: a run, a gap, a lone report, a gap, another run.
+  std::vector<double> hours;
+  std::vector<double> price;
+  for (int i = 0; i <= 48; ++i) {
+    hours.push_back(i);
+    const bool heard = i <= 14 || i == 24 || i >= 34;
+    price.push_back(heard ? 180 + 15 * std::sin(i * 0.4) : nan);
+  }
+  std::vector<double> other;
+  for (int i = 0; i <= 48; ++i) {
+    other.push_back(i % 12 < 8 ? 150 + i : nan);
+  }
+  ChartState state;
+  int formatted = 0;
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(12);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    const ChartSeries series[] = {{"Farm", hours, price},
+                                  {"Habitat", hours, other}};
+    ChartOptions options;
+    options.x_label = "time";
+    options.height = SizeSpec::Fixed(240);
+    options.x_format = [&formatted](double v) {
+      ++formatted;
+      return "D" + std::to_string(static_cast<int>(v) / 24) + " " +
+             std::to_string(static_cast<int>(v) % 24) + "h";
+    };
+    LineChart(ctx, "##chart", series, state, options);
+    End(ctx);
+  };
+  h.Frame(ui);
+  // The crosshair over the first gap marks only the series with data.
+  h.Frame(ui, {InputEvent::Move(330, 150)});
+  h.Frame(ui);
+  EXPECT_GT(formatted, 0);
+  gfx::UiRenderer renderer(ctx(), gfx::OffscreenTarget::kFormat, h.atlas());
+  gfx::OffscreenTarget target(ctx(), {720, 300});
+  testing::ExpectMatchesReference(
+      gfx::RenderToImage(ctx(),
+                         renderer,
+                         target,
+                         h.ctx().draw_lists(),
+                         h.ctx().theme().colors.background),
+      "chart_gaps",
+      2,
+      8);
 }
 
 }  // namespace

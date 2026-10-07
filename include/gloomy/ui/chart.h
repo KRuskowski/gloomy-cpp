@@ -2,6 +2,7 @@
 #define GLOOMY_UI_CHART_H_
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -13,7 +14,8 @@
 
 namespace gloomy::ui {
 
-/// One line of a chart. `x` must be ascending.
+/// One line of a chart. `x` must be ascending. A non-finite `y` (NaN) is a
+/// gap: the line breaks there, and a point between two gaps shows as a dot.
 struct ChartSeries {
   std::string_view name;
   std::span<const double> x;
@@ -32,6 +34,9 @@ struct ChartOptions {
   SizeSpec width = SizeSpec::Grow();
   SizeSpec height = SizeSpec::Fixed(240.0F);
   bool legend = true;
+  /// Formats x values for the tick labels and the tooltip, e.g. as times;
+  /// empty: numbers (TickText()).
+  std::function<std::string(double)> x_format;
 };
 
 /// Zoom, pan and visibility of a chart; owned by the app.

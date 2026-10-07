@@ -399,6 +399,23 @@ TEST(WidgetsTest, TooltipAppearsAfterDelay) {
   EXPECT_EQ(h.ctx().draw_lists().size(), 2U);
 }
 
+TEST(WidgetsTest, DisabledButtonNeverActivatesAndExplainsWhy) {
+  UiHarness h;
+  auto ui = [&](Context &ctx) {
+    DisabledButton(ctx, "Pay 23,773 Cr", "You have 7,960 Cr");
+  };
+  h.Frame(ui);
+  const Id id = h.ctx().GetId("Pay 23,773 Cr");
+  const Vec2 c = h.Center(id);
+  h.Frame(ui, UiHarness::Click(c));
+  // Not focusable, so Enter cannot press it either.
+  EXPECT_NE(h.ctx().focused(), id);
+  h.Frame(ui, {InputEvent::Move(c.x, c.y)});
+  h.AdvanceTime(0.6);
+  h.Frame(ui);
+  EXPECT_EQ(h.ctx().draw_lists().size(), 2U);
+}
+
 TEST(WidgetsTest, SearchFieldStepsAndClears) {
   UiHarness h;
   std::string query;
