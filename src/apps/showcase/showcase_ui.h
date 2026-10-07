@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "app_shell.h"
+#include "gloomy/app/app_shell.h"
 #include "gloomy/data/document.h"
 #include "gloomy/data/table_view.h"
 #include "gloomy/ui/chart.h"
@@ -69,7 +69,7 @@ struct ShowcaseState {
 void InitShowcase(ShowcaseState &state, int rows);
 
 /// Declares the showcase UI for one frame.
-void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
+void ShowcaseUi(ui::Context &ctx, const app::FrameInfo &info,
                 ShowcaseState &state);
 
 }  // namespace gloomy::showcase

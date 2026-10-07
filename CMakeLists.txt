@@ -6,10 +6,19 @@ project(gloomy
   LANGUAGES C CXX
 )
 
-# For include() and find_package() commands
-list(APPEND CMAKE_MODULE_PATH
+# For include() and find_package() commands. Prepended, so that a parent
+# project's modules of the same name (ProjectOptions, ...) do not shadow ours
+# when gloomy is built as a subproject.
+list(PREPEND CMAKE_MODULE_PATH
   ${PROJECT_SOURCE_DIR}/cmake
 )
+
+# As a subproject (add_subdirectory, FetchContent) build only the libraries;
+# normal variables take precedence over option() (CMP0077).
+if(NOT PROJECT_IS_TOP_LEVEL)
+  set(BUILD_APPS OFF)
+  set(BUILD_TESTS OFF)
+endif()
 
 # Project options
 include(ProjectOptions)

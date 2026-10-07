@@ -41,10 +41,12 @@ Like X-conomy: public headers `include/gloomy/<module>/`, implementation `src/gl
 - Grouping: `Query::group_by`/`aggregates`, `BuildGroups` (`src/gloomy/data/query.cc`), `DisplayRows` (`src/gloomy/data/display_rows.cc`); the grid works on display lines (`LineRow`, `LineKey` in `src/gloomy/ui/data_grid.cc`). Append-only sources: `ExecuteAppend`.
 - Data widgets: `ui::DataGrid` (`src/gloomy/ui/data_grid.cc`: `HandleKeys`, `HandlePointer`, `PaintGrid`, `HeaderMenu`), `ui::DocumentView` (`src/gloomy/ui/document_view.cc`, Fenwick tree over block heights), `ui::SearchField` (`src/gloomy/ui/widgets.cc`). Rich text layout: `text::LayoutRich` (`src/gloomy/text/rich_layout.cc`).
 - Headless UI tests drive a `testing::UiHarness` (`tests/test_support/ui_harness.h`) with synthetic events; no GPU needed. SDL event translation: `platform::TranslateEvent` (`src/gloomy/platform/sdl_window.cc`).
+- App shell (`include/gloomy/app/app_shell.h`, target `gloomy::app`): `RunApp()` runs a UI function in an SDL2 window or headless into a PNG (`--screenshot`, `--size`, `--frames`); `FrameInfo` carries time and dt (1/60 s per frame headless, so screenshots are deterministic); `headless_input` scripts input per frame, `ParseKeyList()` parses "Down,Enter,Ctrl+K".
+- As a subproject (`add_subdirectory` or FetchContent, as X-conomy's `xc_client` does) only the libraries build: `BUILD_APPS`/`BUILD_TESTS` are forced off, and `cmake/` is prepended to `CMAKE_MODULE_PATH` so the parent's modules of the same name do not shadow ours.
 - Text: `text::FontSet` (faces, fallback chains), `text::Shaper` (HarfBuzz, font fallback runs, clusters = byte offsets), `text::GlyphCache` (FreeType coverage bitmaps, 4 subpixel bins, into `core::Atlas`), `text::TextSystem` (shape cache, wrap, draw).
 
 ## Conventions
 
 Same as X-conomy / OTC.SDK branch `staging-v12`: Google C++ style, C++23, `snake_case.h/.cc`, include guards (no `#pragma once`), trailing return types, PascalCase functions, `member_` suffix, `kConstants`, `///` doxygen comments on the line above, `.clang-format`/`.clang-tidy`/`.editorconfig` in the repo (`clang-format -i` before committing). Python follows `.flake8`. Unit tests (GoogleTest) for all code; one test file per test binary. Markdown prose is never hard-wrapped.
 
-Git: branch `gl-core`, commit as Karl Ruskowski <karl.ruskowski@optris.de> (repo-local config), unsigned, no Co-Authored-By; push to `origin` only.
+Git: branch `xc-ui` (X-conomy client work; `gl-core` before), commit as Karl Ruskowski <karl.ruskowski@optris.de> (repo-local config), unsigned, no Co-Authored-By; push to `origin` only.

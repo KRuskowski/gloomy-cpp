@@ -27,6 +27,11 @@ enum class Key : std::uint16_t {
   kPageDown,
   kSpace,
   kSlash,
+  kPeriod,
+  kComma,
+  kMinus,
+  /// The key with '=' and '+' on US layouts; also keypad plus.
+  kEquals,
   kA,
   kB,
   kC,

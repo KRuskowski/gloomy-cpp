@@ -4,17 +4,17 @@
 //   gloomy_demo --screenshot out.png     render offscreen and exit
 //   gloomy_demo --size 960x600           window or screenshot size
 
-#include "app_shell.h"
 #include "demo_ui.h"
+#include "gloomy/app/app_shell.h"
 #include "gloomy/ui/theme.h"
 
 auto main(int argc, char **argv) -> int {
   gloomy::demo::DemoState state;
-  gloomy::apps::ShellOptions options;
+  gloomy::app::ShellOptions options;
   options.title = "gloomy demo";
   options.size = {960, 600};
   options.frame = [&](gloomy::ui::Context &ctx,
-                      const gloomy::apps::FrameInfo &info) {
+                      const gloomy::app::FrameInfo &info) {
     const char *names[] = {"Dark", "Light", "High Contrast"};
     if (ctx.theme().name != names[state.theme]) {
       ctx.SetTheme(state.theme == 1 ? gloomy::ui::Theme::Light(info.fonts)
@@ -24,6 +24,6 @@ auto main(int argc, char **argv) -> int {
     }
     gloomy::demo::DemoUi(ctx, state);
   };
-  gloomy::apps::ParseShellArgs(argc, argv, options);
-  return gloomy::apps::RunApp(options);
+  gloomy::app::ParseShellArgs(argc, argv, options);
+  return gloomy::app::RunApp(options);
 }

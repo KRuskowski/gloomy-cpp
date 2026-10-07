@@ -76,6 +76,7 @@ function(gl_add_test name)
 endfunction()
 
 # Modules
+include(cmake/app/test_app_shell.cmake)
 include(cmake/core/test_atlas.cmake)
 include(cmake/core/test_image.cmake)
 include(cmake/core/test_utf8.cmake)
