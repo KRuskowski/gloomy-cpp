@@ -34,6 +34,7 @@ struct FontMetrics {
 struct DefaultFonts {
   FontId sans = 0;
   FontId bold = 0;
+  FontId italic = 0;
   FontId mono = 0;
 };
 
@@ -59,9 +60,9 @@ class FontSet {
   /// are the font's metrics.
   auto AddFont(std::vector<FaceId> chain) -> FontId;
 
-  /// Registers the embedded Liberation Sans (regular, bold) and Liberation
-  /// Mono, each followed by `fallback_files` that exist (for symbols and
-  /// scripts Liberation lacks).
+  /// Registers the embedded Liberation Sans (regular, bold, italic) and
+  /// Liberation Mono, each followed by those `fallback_files` that exist
+  /// (for symbols and scripts Liberation lacks).
   auto AddDefaultFonts(const std::vector<std::string> &fallback_files =
                            DefaultFallbackFiles()) -> DefaultFonts;
 

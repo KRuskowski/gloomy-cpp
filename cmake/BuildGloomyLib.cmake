@@ -15,6 +15,9 @@ gl_embed_file(gl_generated_headers
   ${GL_PROJECT_DIR}/assets/fonts/LiberationSans-Bold.ttf
   kLiberationSansBold)
 gl_embed_file(gl_generated_headers
+  ${GL_PROJECT_DIR}/assets/fonts/LiberationSans-Italic.ttf
+  kLiberationSansItalic)
+gl_embed_file(gl_generated_headers
   ${GL_PROJECT_DIR}/assets/fonts/LiberationMono-Regular.ttf
   kLiberationMonoRegular)
 add_custom_target(GlGenerated DEPENDS ${gl_generated_headers})
@@ -29,6 +32,7 @@ add_library(GlCore OBJECT
 
 add_library(GlData OBJECT
   src/gloomy/data/columnar_table.cc
+  src/gloomy/data/document.cc
   src/gloomy/data/query.cc
   src/gloomy/data/search.cc
   src/gloomy/data/table_source.cc
@@ -46,6 +50,7 @@ add_library(GlGfx OBJECT
 add_library(GlText OBJECT
   src/gloomy/text/font_set.cc
   src/gloomy/text/glyph_cache.cc
+  src/gloomy/text/rich_layout.cc
   src/gloomy/text/shaper.cc
   src/gloomy/text/text_renderer.cc
 )
@@ -53,6 +58,7 @@ add_library(GlText OBJECT
 add_library(GlUi OBJECT
   src/gloomy/ui/context.cc
   src/gloomy/ui/data_grid.cc
+  src/gloomy/ui/document_view.cc
   src/gloomy/ui/layout.cc
   src/gloomy/ui/theme.cc
   src/gloomy/ui/widget_util.cc

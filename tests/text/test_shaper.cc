@@ -71,7 +71,7 @@ TEST_F(ShaperTest, HitTestFindsNearestBoundary) {
 TEST_F(ShaperTest, FallsBackToLaterFaces) {
   FontSet fonts;
   const DefaultFonts ids = fonts.AddDefaultFonts();
-  if (fonts.face_count() < 4) {
+  if (fonts.face_count() < 5) {
     GTEST_SKIP() << "no fallback font installed";
   }
   Shaper shaper(fonts);

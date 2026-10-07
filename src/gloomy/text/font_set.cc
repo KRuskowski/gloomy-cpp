@@ -11,6 +11,7 @@
 
 #include "assets/LiberationMono-Regular.ttf.h"
 #include "assets/LiberationSans-Bold.ttf.h"
+#include "assets/LiberationSans-Italic.ttf.h"
 #include "assets/LiberationSans-Regular.ttf.h"
 
 namespace gloomy::text {
@@ -95,6 +96,7 @@ auto FontSet::AddDefaultFonts(const std::vector<std::string> &fallback_files)
     -> DefaultFonts {
   const FaceId sans = *AddFace(kLiberationSansRegular, true);
   const FaceId bold = *AddFace(kLiberationSansBold, true);
+  const FaceId italic = *AddFace(kLiberationSansItalic, true);
   const FaceId mono = *AddFace(kLiberationMonoRegular, true);
   std::vector<FaceId> fallbacks;
   for (const std::string &path : fallback_files) {
@@ -112,6 +114,7 @@ auto FontSet::AddDefaultFonts(const std::vector<std::string> &fallback_files)
   DefaultFonts fonts;
   fonts.sans = AddFont(chain(sans));
   fonts.bold = AddFont(chain(bold));
+  fonts.italic = AddFont(chain(italic));
   fonts.mono = AddFont(chain(mono));
   return fonts;
 }

@@ -399,6 +399,53 @@ TEST(WidgetsTest, TooltipAppearsAfterDelay) {
   EXPECT_EQ(h.ctx().draw_lists().size(), 2U);
 }
 
+TEST(WidgetsTest, SearchFieldStepsAndClears) {
+  UiHarness h;
+  std::string query;
+  SearchFieldResult r;
+  auto ui = [&](Context &ctx) {
+    SearchFieldOptions opt;
+    opt.status = "3 of 17";
+    r = SearchField(ctx, "##find", query, opt);
+  };
+  h.Frame(ui);
+  h.ctx().SetFocus(SearchFieldId(h.ctx(), "##find"));
+  h.Frame(ui, {InputEvent::Text("ore")});
+  EXPECT_TRUE(r.changed);
+  EXPECT_EQ(query, "ore");
+  h.Frame(ui, UiHarness::Key(Key::kEnter));
+  EXPECT_TRUE(r.next);
+  h.Frame(ui, UiHarness::Key(Key::kF3, kModShift));
+  EXPECT_TRUE(r.previous);
+  h.Frame(ui, UiHarness::Key(Key::kEscape));
+  EXPECT_TRUE(r.cleared);
+  EXPECT_TRUE(query.empty());
+  EXPECT_TRUE(h.ctx().HasFocus(SearchFieldId(h.ctx(), "##find")));
+  // A second Escape leaves the field.
+  h.Frame(ui, UiHarness::Key(Key::kEscape));
+  EXPECT_EQ(h.ctx().focused(), kNoId);
+}
+
+TEST(WidgetsTest, SearchFieldClearButton) {
+  UiHarness h;
+  std::string query = "silicon";
+  SearchFieldResult r;
+  auto ui = [&](Context &ctx) {
+    r = SearchField(ctx, "##find", query);
+  };
+  h.Frame(ui);
+  Id clear = kNoId;
+  h.Frame([&](Context &ctx) {
+    ui(ctx);
+    ctx.PushId("##find");
+    clear = ctx.GetId("##clear");
+    ctx.PopId();
+  });
+  h.Frame(ui, UiHarness::Click(h.Center(clear)));
+  EXPECT_TRUE(r.cleared);
+  EXPECT_TRUE(query.empty());
+}
+
 TEST(WidgetsTest, StateIsDroppedWhenUnused) {
   UiHarness h;
   std::string text = "x";

@@ -55,6 +55,7 @@ struct Metrics {
 struct ThemeFonts {
   text::FontId sans = 0;
   text::FontId bold = 0;
+  text::FontId italic = 0;
   text::FontId mono = 0;
 };
 

@@ -5,7 +5,7 @@ namespace gloomy::ui {
 namespace {
 
 auto Fonts(const text::DefaultFonts &f) -> ThemeFonts {
-  return {f.sans, f.bold, f.mono};
+  return {f.sans, f.bold, f.italic, f.mono};
 }
 
 }  // namespace

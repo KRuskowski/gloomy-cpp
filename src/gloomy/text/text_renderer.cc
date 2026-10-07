@@ -106,10 +106,36 @@ auto TextSystem::Wrap(std::string_view text, FontId font, float size,
   return result;
 }
 
+void TextSystem::DrawGlyph(gfx::DrawList &list, FaceId face,
+                           std::uint32_t glyph, float size, Vec2 pen,
+                           const Color &color) {
+  float ix = std::floor(pen.x);
+  int bin = static_cast<int>((pen.x - ix) * kSubpixelBins + 0.5F);
+  if (bin == kSubpixelBins) {
+    ix += 1.0F;
+    bin = 0;
+  }
+  const GlyphBitmap &bitmap = glyphs_.Get(face, glyph, size, bin);
+  if (!bitmap.visible) {
+    return;
+  }
+  const float page_size = static_cast<float>(glyphs_.atlas().page_size());
+  const AtlasRegion &r = bitmap.region;
+  const float x0 = ix + static_cast<float>(bitmap.left);
+  const float y0 = std::round(pen.y) - static_cast<float>(bitmap.top);
+  list.Glyph(
+      Rect::FromXywh(x0, y0, static_cast<float>(r.w), static_cast<float>(r.h)),
+      Rect{static_cast<float>(r.x) / page_size,
+           static_cast<float>(r.y) / page_size,
+           static_cast<float>(r.x + r.w) / page_size,
+           static_cast<float>(r.y + r.h) / page_size},
+      r.page,
+      color);
+}
+
 void TextSystem::DrawRange(gfx::DrawList &list, const ShapedText &shaped,
                            std::uint32_t begin, std::uint32_t end, Vec2 origin,
                            const Color &color) {
-  const float page_size = static_cast<float>(glyphs_.atlas().page_size());
   const float baseline = std::round(origin.y);
   float shift = 0.0F;
   bool first = true;
@@ -121,29 +147,12 @@ void TextSystem::DrawRange(gfx::DrawList &list, const ShapedText &shaped,
       shift = g.x;
       first = false;
     }
-    const float pen_x = origin.x + g.x - shift;
-    float ix = std::floor(pen_x);
-    int bin = static_cast<int>((pen_x - ix) * kSubpixelBins + 0.5F);
-    if (bin == kSubpixelBins) {
-      ix += 1.0F;
-      bin = 0;
-    }
-    const GlyphBitmap &bitmap = glyphs_.Get(g.face, g.glyph, shaped.size, bin);
-    if (!bitmap.visible) {
-      continue;
-    }
-    const AtlasRegion &r = bitmap.region;
-    const float x0 = ix + static_cast<float>(bitmap.left);
-    const float y0 =
-        baseline + std::round(g.y) - static_cast<float>(bitmap.top);
-    list.Glyph(Rect::FromXywh(
-                   x0, y0, static_cast<float>(r.w), static_cast<float>(r.h)),
-               Rect{static_cast<float>(r.x) / page_size,
-                    static_cast<float>(r.y) / page_size,
-                    static_cast<float>(r.x + r.w) / page_size,
-                    static_cast<float>(r.y + r.h) / page_size},
-               r.page,
-               color);
+    DrawGlyph(list,
+              g.face,
+              g.glyph,
+              shaped.size,
+              {origin.x + g.x - shift, baseline + std::round(g.y)},
+              color);
   }
 }
 

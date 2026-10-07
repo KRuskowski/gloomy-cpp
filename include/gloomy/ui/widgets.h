@@ -84,6 +84,8 @@ struct TextFieldOptions {
   std::string_view placeholder;
   SizeSpec width = SizeSpec::Fixed(200.0F);
   bool mono = false;
+  /// No background or border (for fields embedded in other widgets).
+  bool frameless = false;
 };
 
 struct TextFieldResult {
@@ -105,6 +107,34 @@ auto Dropdown(Context &ctx, std::string_view label, int &selected,
 /// @return True when the selection changed.
 auto Tabs(Context &ctx, std::string_view label, int &selected,
           std::span<const std::string> labels) -> bool;
+
+struct SearchFieldOptions {
+  std::string_view placeholder = "Search";
+  SizeSpec width = SizeSpec::Grow();
+  /// Shown at the right end, e.g. "3 of 17" or "481 rows".
+  std::string_view status;
+  /// Work is running for the current query.
+  bool busy = false;
+};
+
+struct SearchFieldResult {
+  /// The query text changed (search incrementally on every change).
+  bool changed = false;
+  /// Enter or F3: go to the next match.
+  bool next = false;
+  /// Shift+Enter or Shift+F3: go to the previous match.
+  bool previous = false;
+  /// Escape or the clear button emptied the query.
+  bool cleared = false;
+};
+
+/// A search box: magnifier, query, match status, clear button. Enter/F3
+/// and Shift+Enter/Shift+F3 step through matches, Escape clears.
+auto SearchField(Context &ctx, std::string_view label, std::string &query,
+                 const SearchFieldOptions &opt = {}) -> SearchFieldResult;
+
+/// Id of a search field's text input, to focus it (Ctrl+F, "/").
+auto SearchFieldId(Context &ctx, std::string_view label) -> Id;
 
 // Scrolling.
 

@@ -66,6 +66,11 @@ class TextSystem {
   auto Wrap(std::string_view text, FontId font, float size, float max_width)
       -> WrappedText;
 
+  /// Draws one glyph with its pen position at `pen` (baseline), snapped to
+  /// the nearest subpixel bin.
+  void DrawGlyph(gfx::DrawList &list, FaceId face, std::uint32_t glyph,
+                 float size, Vec2 pen, const Color &color);
+
   /// Draws shaped text with its baseline starting at `origin`.
   void Draw(gfx::DrawList &list, const ShapedText &shaped, Vec2 origin,
             const Color &color);

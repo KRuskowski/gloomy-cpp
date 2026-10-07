@@ -4,7 +4,7 @@ C++23 respin of gloomy (`~/prsn/gloomy`, Rust/wgpu, ~18k lines: SDF primitives, 
 
 Design: `docs/design.md` (read it first; section 2 is the guiding principle "deep data, accessible surface"). gloomy is a reference for the low level only, not for the widget layer.
 
-Current state: phases 1-3 done (design, foundation, layout/input/focus/theme/basic widgets). Next: phase 4, the data layer (`TableSource`, queries, search) and the DataGrid.
+Current state: phases 1-4 done (design, foundation, layout/input/focus/theme/basic widgets, data layer, DataGrid, search field, document view). Next: phase 5, showcase and benchmark; then the answer-first widgets (SummaryCard, ExplainedValue, ViewPreset), command palette and global search from docs/design.md.
 
 ## Build and test
 
@@ -30,6 +30,8 @@ Like X-conomy: public headers `include/gloomy/<module>/`, implementation `src/gl
 - One instance format for every primitive: `Instance` in `include/gloomy/gfx/draw_list.h`; must match the vertex attributes in `src/gloomy/gfx/ui_renderer.cc` (`CreatePipeline`) and `ui.vert`.
 - Device ownership vs. UI rendering: `gfx::DeviceContext` (`Create` or `Wrap` a host device), `gfx::UiRenderer` (`Prepare` outside, `Draw` inside the caller's dynamic rendering), `gfx::OffscreenTarget`, `gfx::Swapchain`.
 - UI frame model: `ui::Context` (`include/gloomy/ui/context.h`): immediate-mode declaration into a per-frame node tree; input resolves against the previous frame's layout (`ProcessEvents`, `HitTest`); results are swapped in at the end of `EndFrame()`; per-id state via `State<T>(id)`; overlay layers (`BeginLayer`: popup, tooltip, modal). Layout engine: `ui::LayoutTree` (`src/gloomy/ui/layout.cc`, Clay-style passes). Widgets: `include/gloomy/ui/widgets.h`. Themes: `src/gloomy/ui/theme.cc`.
+- Data layer (`include/gloomy/data/`): `TableSource` (typed access, `Explain`), `ColumnarTable`, `FunctionTable` (zero-copy adapter for SoA), `Query`/`Execute` (`src/gloomy/data/query.cc`: filters, parallel multi-key sort, narrowing/resort/cache paths), `SearchCorpus` (`src/gloomy/data/search.cc`), `TableView` (`src/gloomy/data/table_view.cc`: sync below 50k rows, else worker thread with cancellation), `Document` (Markdown subset, `src/gloomy/data/document.cc`).
+- Data widgets: `ui::DataGrid` (`src/gloomy/ui/data_grid.cc`: `HandleKeys`, `HandlePointer`, `PaintGrid`, `HeaderMenu`), `ui::DocumentView` (`src/gloomy/ui/document_view.cc`, Fenwick tree over block heights), `ui::SearchField` (`src/gloomy/ui/widgets.cc`). Rich text layout: `text::LayoutRich` (`src/gloomy/text/rich_layout.cc`).
 - Headless UI tests drive a `testing::UiHarness` (`tests/test_support/ui_harness.h`) with synthetic events; no GPU needed. SDL event translation: `platform::TranslateEvent` (`src/gloomy/platform/sdl_window.cc`).
 - Text: `text::FontSet` (faces, fallback chains), `text::Shaper` (HarfBuzz, font fallback runs, clusters = byte offsets), `text::GlyphCache` (FreeType coverage bitmaps, 4 subpixel bins, into `core::Atlas`), `text::TextSystem` (shape cache, wrap, draw).
 

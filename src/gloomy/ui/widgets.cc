@@ -556,10 +556,12 @@ auto TextField(Context &ctx, std::string_view label, std::string &text,
   field.id = id;
   field.layout.width = opt.width;
   field.layout.height = SizeSpec::Fixed(t.metrics.control_height);
-  field.style.fill = t.colors.surface_alt;
-  field.style.border = focused ? t.colors.focus : t.colors.border;
-  field.style.border_width = t.metrics.border_width;
-  field.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+  if (!opt.frameless) {
+    field.style.fill = t.colors.surface_alt;
+    field.style.border = focused ? t.colors.focus : t.colors.border;
+    field.style.border_width = t.metrics.border_width;
+    field.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+  }
   field.flags = kNodeInteractive | kNodeFocusable | kNodeClip;
   const int node = ctx.Open(field);
   ctx.Close();
@@ -807,6 +809,109 @@ auto Tabs(Context &ctx, std::string_view label, int &selected,
   ctx.PopId();
   ctx.Close();
   return selected != before;
+}
+
+auto SearchFieldId(Context &ctx, std::string_view label) -> Id {
+  ctx.PushId(label);
+  const Id id = ctx.GetId("##q");
+  ctx.PopId();
+  return id;
+}
+
+auto SearchField(Context &ctx, std::string_view label, std::string &query,
+                 const SearchFieldOptions &opt) -> SearchFieldResult {
+  const Theme &t = ctx.theme();
+  SearchFieldResult result;
+  const Id id = ctx.GetId(label);
+  ctx.PushId(label);
+  const Id field_id = ctx.GetId("##q");
+  const Id clear_id = ctx.GetId("##clear");
+  const bool focused = ctx.HasFocus(field_id);
+  if (focused) {
+    if (ctx.ConsumeKey(Key::kEnter) || ctx.ConsumeKey(Key::kF3)) {
+      result.next = true;
+    }
+    if (ctx.ConsumeKey(Key::kEnter, kModShift) ||
+        ctx.ConsumeKey(Key::kF3, kModShift)) {
+      result.previous = true;
+    }
+    if (!query.empty() && ctx.ConsumeKey(Key::kEscape)) {
+      query.clear();
+      result.cleared = true;
+      result.changed = true;
+    }
+  }
+  if (ctx.Interact(clear_id).clicked && !query.empty()) {
+    query.clear();
+    result.cleared = true;
+    result.changed = true;
+    ctx.SetFocus(field_id, false);
+  }
+
+  NodeDesc box;
+  box.id = id;
+  box.layout.mode = LayoutMode::kRow;
+  box.layout.width = opt.width;
+  box.layout.height = SizeSpec::Fixed(t.metrics.control_height);
+  box.layout.padding = Padding::Xy(6, 0);
+  box.layout.gap = 4;
+  box.layout.align = Align::kCenter;
+  box.style.fill = t.colors.surface_alt;
+  box.style.border = focused ? t.colors.focus : t.colors.border;
+  box.style.border_width = t.metrics.border_width;
+  box.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+  ctx.Open(box);
+
+  NodeDesc icon;
+  icon.layout.width = SizeSpec::Fixed(14);
+  icon.layout.height = SizeSpec::Fixed(14);
+  const int icon_node = ctx.Open(icon);
+  ctx.Close();
+  const Color icon_color = focused ? t.colors.text : t.colors.text_muted;
+  ctx.AddPainter(icon_node, [=](PaintContext &pc, const Rect &r) {
+    pc.list.StrokeCircle({r.x0 + 6, r.y0 + 6}, 4.5F, icon_color, 1.5F);
+    pc.list.Line(
+        {r.x0 + 9.5F, r.y0 + 9.5F}, {r.x0 + 13, r.y0 + 13}, 1.8F, icon_color);
+  });
+
+  TextFieldOptions field;
+  field.width = SizeSpec::Grow();
+  field.placeholder = opt.placeholder;
+  field.frameless = true;
+  if (TextField(ctx, "##q", query, field).changed) {
+    result.changed = true;
+  }
+  if (opt.busy || !opt.status.empty()) {
+    TextSpec status;
+    status.text = opt.busy && opt.status.empty() ? "\xE2\x80\xA6" : opt.status;
+    status.font = t.fonts.sans;
+    status.size = t.metrics.small_font_size + 1;
+    status.color = t.colors.text_muted;
+    ctx.Text(status);
+  }
+  if (!query.empty()) {
+    const Interaction it = ctx.Interact(clear_id);
+    NodeDesc clear;
+    clear.id = clear_id;
+    clear.layout.width = SizeSpec::Fixed(16);
+    clear.layout.height = SizeSpec::Fixed(16);
+    clear.style.radii = gfx::CornerRadii::All(8);
+    clear.style.fill = it.hovered ? t.colors.hover : Color{0, 0, 0, 0};
+    clear.flags = kNodeInteractive;
+    const int clear_node = ctx.Open(clear);
+    ctx.Close();
+    const Color x_color = it.hovered ? t.colors.text : t.colors.text_muted;
+    ctx.AddPainter(clear_node, [=](PaintContext &pc, const Rect &r) {
+      const Vec2 c = r.Center();
+      pc.list.Line(
+          {c.x - 3.5F, c.y - 3.5F}, {c.x + 3.5F, c.y + 3.5F}, 1.5F, x_color);
+      pc.list.Line(
+          {c.x - 3.5F, c.y + 3.5F}, {c.x + 3.5F, c.y - 3.5F}, 1.5F, x_color);
+    });
+  }
+  ctx.Close();
+  ctx.PopId();
+  return result;
 }
 
 // Scrolling.
