@@ -51,6 +51,18 @@ class SearchCorpus {
                     const std::atomic<bool> *cancel = nullptr)
       -> std::shared_ptr<SearchCorpus>;
 
+  /// Like Build(), but shares corpora between callers: views of the same
+  /// source version and columns (a grid and global search) get the same
+  /// corpus while any of them holds it.
+  static auto Shared(const TableSource &source, std::span<const int> columns,
+                     const std::atomic<bool> *cancel = nullptr)
+      -> std::shared_ptr<const SearchCorpus>;
+
+  /// A copy of `base` extended with the rows `source` (append-only) added
+  /// since `base` was built.
+  static auto Extend(const SearchCorpus &base, const TableSource &source)
+      -> std::shared_ptr<SearchCorpus>;
+
   /// Appends a document.
   void Add(std::string_view text);
 

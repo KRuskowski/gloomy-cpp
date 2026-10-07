@@ -111,6 +111,16 @@ TEST(SearchTest, ParallelBuildMatchesSequential) {
   EXPECT_EQ(docs, (std::vector<std::uint32_t>{119990, 119994, 119998}));
 }
 
+TEST(SearchTest, SharedCorporaAreReused) {
+  const ColumnarTable t = MakeTable(100);
+  auto a = SearchCorpus::Shared(t, {});
+  auto b = SearchCorpus::Shared(t, {});
+  EXPECT_EQ(a.get(), b.get());
+  const int columns[] = {0};
+  auto c = SearchCorpus::Shared(t, columns);
+  EXPECT_NE(a.get(), c.get());
+}
+
 TEST(SearchTest, CancelledBuildReturnsNull) {
   const ColumnarTable t = MakeTable(1000);
   std::atomic<bool> cancel{true};

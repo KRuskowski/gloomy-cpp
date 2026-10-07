@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -125,6 +126,39 @@ TEST(TableViewTest, SlowQueriesAreNotRestartedByRefreshes) {
   }
   EXPECT_FALSE(view.busy());
   EXPECT_EQ(view.rows().size(), 300000U);
+}
+
+TEST(TableViewTest, AppendOnlySourcesExtendTheView) {
+  auto t = MakeTable(1000);
+  t->SetAppendOnly(true);
+  TableView view(t);
+  view.SetRefreshInterval(0.0);
+  Query q;
+  q.sort = {{1, SortDirection::kAscending}};
+  q.filters = {{.column = 1, .op = FilterOp::kLess, .a = 500}};
+  q.search = "station";
+  view.SetQuery(q);
+  view.Update(0.0);
+  const std::size_t before = view.rows().size();
+  ASSERT_GT(before, 0U);
+  t->AddRow({"Station new low", std::int64_t{3}});
+  t->AddRow({"Station new high", std::int64_t{900}});
+  t->AddRow({"Outpost new", std::int64_t{4}});
+  view.Update(1.0);
+  EXPECT_EQ(view.view().path, RowView::Path::kAppended);
+  // Only the matching new row joined, at its sorted place.
+  ASSERT_EQ(view.rows().size(), before + 1);
+  for (std::size_t i = 1; i < view.rows().size(); ++i) {
+    ASSERT_LE(t->GetInt64(1, view.rows()[i - 1]),
+              t->GetInt64(1, view.rows()[i]));
+  }
+  EXPECT_NE(std::find(view.rows().begin(), view.rows().end(), 1000U),
+            view.rows().end());
+  // The result equals a full run.
+  auto corpus = SearchCorpus::Build(*t, {});
+  const auto full = Execute(*t, q, nullptr, corpus.get());
+  EXPECT_EQ(std::vector<RowIndex>(view.rows().begin(), view.rows().end()),
+            full->rows);
 }
 
 TEST(TableViewTest, PositionOfKey) {

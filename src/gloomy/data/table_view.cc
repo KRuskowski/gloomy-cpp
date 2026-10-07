@@ -50,13 +50,28 @@ auto TableView::Run(const Job &job, const std::atomic<bool> *cancel) -> Done {
   done.ticket = job.ticket;
   done.corpus = job.corpus;
   const std::uint64_t version = job.source->Version();
+  const bool append = job.append && job.prev;
   if (!job.query.search.empty() &&
       (!done.corpus || done.corpus->version() != version)) {
-    done.corpus =
-        SearchCorpus::Build(*job.source, job.query.search_columns, cancel);
+    if (append && done.corpus &&
+        done.corpus->size() <= job.source->RowCount()) {
+      // Append-only: extend the corpus instead of rebuilding it.
+      done.corpus = SearchCorpus::Extend(*done.corpus, *job.source);
+    } else {
+      done.corpus =
+          SearchCorpus::Shared(*job.source, job.query.search_columns, cancel);
+    }
     if (!done.corpus) {
       return done;
     }
+  }
+  if (append) {
+    auto result = ExecuteAppend(
+        *job.source, job.query, *job.prev, done.corpus.get(), cancel);
+    if (result) {
+      done.view = std::make_shared<RowView>(std::move(*result));
+    }
+    return done;
   }
   auto result = Execute(
       *job.source, job.query, job.prev.get(), done.corpus.get(), cancel);
@@ -129,6 +144,16 @@ void TableView::Start() {
   if (corpus_ && corpus_->version() == version &&
       corpus_->columns() == columns) {
     job.corpus = corpus_;
+  }
+  // An append-only source that only grew: extend the current result.
+  if (source_->AppendOnly() && current_->query == query_ &&
+      current_->version != version && current_->version != 0 &&
+      current_->source_rows <= source_->RowCount()) {
+    job.prev = current_;
+    job.append = true;
+    if (corpus_ && corpus_->columns() == columns) {
+      job.corpus = corpus_;
+    }
   }
   pending_ = true;
   if (source_->RowCount() < sync_threshold_) {

@@ -88,6 +88,8 @@ class TableView {
     std::shared_ptr<const RowView> prev;
     std::shared_ptr<const SearchCorpus> corpus;
     std::uint64_t ticket = 0;
+    /// Extend `prev` with appended rows instead of running the query.
+    bool append = false;
   };
 
   struct Done {

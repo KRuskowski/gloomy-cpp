@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 
 #include "gloomy/core/parallel.h"
 #include "gloomy/core/utf8.h"
@@ -189,6 +190,77 @@ auto SearchCorpus::Build(const TableSource &source,
     for (const std::uint64_t e : ends[c]) {
       corpus->offsets_.push_back(base + e);
     }
+  }
+  return corpus;
+}
+
+namespace {
+
+struct CacheEntry {
+  const TableSource *source;
+  std::uint64_t version;
+  RowIndex rows;
+  std::vector<int> columns;
+  std::weak_ptr<const SearchCorpus> corpus;
+};
+
+std::mutex g_cache_mutex;
+std::vector<CacheEntry> g_cache;
+
+}  // namespace
+
+auto SearchCorpus::Shared(const TableSource &source,
+                          std::span<const int> columns,
+                          const std::atomic<bool> *cancel)
+    -> std::shared_ptr<const SearchCorpus> {
+  std::vector<int> wanted(columns.begin(), columns.end());
+  if (wanted.empty()) {
+    const std::span<const ColumnInfo> infos = source.Columns();
+    for (std::size_t c = 0; c < infos.size(); ++c) {
+      if (infos[c].searchable) {
+        wanted.push_back(static_cast<int>(c));
+      }
+    }
+  }
+  const std::uint64_t version = source.Version();
+  const RowIndex rows = source.RowCount();
+  {
+    const std::lock_guard lock(g_cache_mutex);
+    std::erase_if(g_cache,
+                  [](const CacheEntry &e) { return e.corpus.expired(); });
+    for (const CacheEntry &e : g_cache) {
+      if (e.source == &source && e.version == version && e.rows == rows &&
+          e.columns == wanted) {
+        if (auto corpus = e.corpus.lock()) {
+          return corpus;
+        }
+      }
+    }
+  }
+  std::shared_ptr<const SearchCorpus> corpus = Build(source, wanted, cancel);
+  if (corpus) {
+    const std::lock_guard lock(g_cache_mutex);
+    g_cache.push_back({&source, version, rows, wanted, corpus});
+  }
+  return corpus;
+}
+
+auto SearchCorpus::Extend(const SearchCorpus &base, const TableSource &source)
+    -> std::shared_ptr<SearchCorpus> {
+  auto corpus = std::make_shared<SearchCorpus>(base);
+  corpus->version_ = source.Version();
+  std::string cell;
+  std::string folded;
+  for (RowIndex r = base.size(); r < source.RowCount(); ++r) {
+    for (std::size_t i = 0; i < corpus->columns_.size(); ++i) {
+      if (i > 0) {
+        corpus->blob_.push_back(kSegmentSeparator);
+      }
+      source.FormatCell(r, corpus->columns_[i], cell);
+      FoldCaseUtf8(cell, folded);
+      corpus->blob_ += folded;
+    }
+    corpus->offsets_.push_back(corpus->blob_.size());
   }
   return corpus;
 }

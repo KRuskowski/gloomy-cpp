@@ -116,7 +116,16 @@ struct RowView {
   /// Source version the rows were computed from.
   std::uint64_t version = 0;
   /// How the result was obtained, for tests and diagnostics.
-  enum class Path : std::uint8_t { kFull, kNarrowed, kResorted, kCached };
+  /// Source row count the rows were computed from (append-only sources
+  /// extend from here).
+  RowIndex source_rows = 0;
+  enum class Path : std::uint8_t {
+    kFull,
+    kNarrowed,
+    kResorted,
+    kCached,
+    kAppended,
+  };
   Path path = Path::kFull;
 };
 
@@ -147,6 +156,15 @@ auto Passes(const TableSource &source, const Filter &filter, RowIndex row)
 auto SortRows(const TableSource &source, std::span<const SortKey> keys,
               std::vector<RowIndex> &rows,
               const std::atomic<bool> *cancel = nullptr) -> bool;
+
+/// Extends `prev` (same query) with the rows an append-only source added
+/// since: they are filtered, searched, sorted and merged in. `corpus` must
+/// cover them when the query searches.
+/// @return std::nullopt if cancelled.
+auto ExecuteAppend(const TableSource &source, const Query &query,
+                   const RowView &prev, const SearchCorpus *corpus,
+                   const std::atomic<bool> *cancel = nullptr)
+    -> std::optional<RowView>;
 
 /// Runs `query` on `source`. With `prev` from the same source version, a
 /// narrowing query runs on prev's rows and a re-sort only reorders them.

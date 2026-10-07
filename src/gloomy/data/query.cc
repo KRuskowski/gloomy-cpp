@@ -389,6 +389,7 @@ auto Execute(const TableSource &source, const Query &query, const RowView *prev,
   RowView result;
   result.query = query;
   result.version = source.Version();
+  result.source_rows = source.RowCount();
   const bool same_data = prev != nullptr && prev->version == result.version;
 
   if (same_data && prev->query == query) {
@@ -450,6 +451,72 @@ auto Execute(const TableSource &source, const Query &query, const RowView *prev,
 
   if (!sorted && !SortRows(source, EffectiveSort(query), result.rows, cancel)) {
     return std::nullopt;
+  }
+  if (!BuildGroups(source, query, result, cancel)) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+auto ExecuteAppend(const TableSource &source, const Query &query,
+                   const RowView &prev, const SearchCorpus *corpus,
+                   const std::atomic<bool> *cancel) -> std::optional<RowView> {
+  RowView result;
+  result.query = query;
+  result.version = source.Version();
+  result.source_rows = source.RowCount();
+  result.path = RowView::Path::kAppended;
+  // The new rows, filtered and searched.
+  std::vector<RowIndex> added;
+  for (RowIndex r = prev.source_rows; r < result.source_rows; ++r) {
+    added.push_back(r);
+  }
+  for (const Filter &f : query.filters) {
+    std::erase_if(added, [&](RowIndex r) { return !Passes(source, f, r); });
+  }
+  const std::vector<std::string> terms = ParseTerms(query.search);
+  if (!terms.empty()) {
+    if (corpus == nullptr || corpus->size() < result.source_rows ||
+        !corpus->Filter(added, terms, cancel)) {
+      return std::nullopt;
+    }
+  }
+  const std::vector<SortKey> keys = EffectiveSort(query);
+  if (!SortRows(source, keys, added, cancel)) {
+    return std::nullopt;
+  }
+  result.rows.reserve(prev.rows.size() + added.size());
+  result.rows = prev.rows;
+  if (keys.empty()) {
+    result.rows.insert(result.rows.end(), added.begin(), added.end());
+  } else {
+    // Merge: sort keys of the merged rows once, then merge the two sorted
+    // runs by position.
+    const auto mid = static_cast<std::ptrdiff_t>(result.rows.size());
+    result.rows.insert(result.rows.end(), added.begin(), added.end());
+    std::vector<KeyColumn> columns(keys.size());
+    for (std::size_t k = 0; k < keys.size(); ++k) {
+      Extract(source, keys[k], result.rows, columns[k]);
+    }
+    std::vector<std::uint32_t> order(result.rows.size());
+    std::iota(order.begin(), order.end(), 0U);
+    std::inplace_merge(order.begin(),
+                       order.begin() + mid,
+                       order.end(),
+                       [&](std::uint32_t a, std::uint32_t b) {
+                         for (const KeyColumn &k : columns) {
+                           const int c = Compare(k, a, b);
+                           if (c != 0) {
+                             return c < 0;
+                           }
+                         }
+                         return result.rows[a] < result.rows[b];
+                       });
+    std::vector<RowIndex> merged(order.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+      merged[i] = result.rows[order[i]];
+    }
+    result.rows.swap(merged);
   }
   if (!BuildGroups(source, query, result, cancel)) {
     return std::nullopt;
