@@ -1,6 +1,7 @@
 #include "gloomy/data/document.h"
 
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 
 namespace gloomy::data {
@@ -293,9 +294,14 @@ auto Document::ParseMarkdown(std::string_view source) -> Document {
   return doc;
 }
 
+auto Document::NextVersion() -> std::uint64_t {
+  static std::atomic<std::uint64_t> next{1};
+  return next.fetch_add(1, std::memory_order_relaxed);
+}
+
 void Document::AddBlock(DocBlock block) {
   blocks_.push_back(std::move(block));
-  ++version_;
+  version_ = NextVersion();
 }
 
 auto Document::Outline() const -> std::vector<DocSection> {

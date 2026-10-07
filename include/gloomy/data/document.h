@@ -99,12 +99,16 @@ class Document {
   auto FindAll(std::span<const std::string> terms) const
       -> std::vector<DocMatch>;
 
-  /// Changes whenever blocks are added.
+  /// Changes whenever blocks are added. Unique across documents, so that a
+  /// view's caches (DocumentViewState) notice when the document it shows is
+  /// replaced by another, even one with as many blocks.
   auto version() const -> std::uint64_t { return version_; }
 
  private:
+  static auto NextVersion() -> std::uint64_t;
+
   std::vector<DocBlock> blocks_;
-  std::uint64_t version_ = 1;
+  std::uint64_t version_ = NextVersion();
   mutable std::shared_ptr<SearchCorpus> corpus_;
   mutable std::uint64_t corpus_version_ = 0;
 };
