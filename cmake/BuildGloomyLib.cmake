@@ -23,7 +23,16 @@ add_custom_target(GlGenerated DEPENDS ${gl_generated_headers})
 add_library(GlCore OBJECT
   src/gloomy/core/atlas.cc
   src/gloomy/core/image.cc
+  src/gloomy/core/parallel.cc
   src/gloomy/core/utf8.cc
+)
+
+add_library(GlData OBJECT
+  src/gloomy/data/columnar_table.cc
+  src/gloomy/data/query.cc
+  src/gloomy/data/search.cc
+  src/gloomy/data/table_source.cc
+  src/gloomy/data/table_view.cc
 )
 
 add_library(GlGfx OBJECT
@@ -50,6 +59,7 @@ add_library(GlUi OBJECT
 
 set(gl_module_names
   GlCore
+  GlData
   GlGfx
   GlText
   GlUi
