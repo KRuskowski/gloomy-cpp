@@ -378,8 +378,9 @@ Built:
 - Data: `TableSource`, `ColumnarTable`, `FunctionTable`, queries with typed filters, multi-key parallel sort, quick search, grouping and aggregates, narrowing/re-sort/cache/append paths, background `TableView`s, shared search corpora, fuzzy matching.
 - Data grid: everything in 11.2 (including grouping, tree rows, column groups and sparkline cells) except right pinning, cell-range selection and icon cells; plus a standard cell context menu ("only this value", "hide this value", copy).
 - Section 2: `ExplainedLabel`, `Sparkline`, `SummaryCard` (glance), `SummaryPanel` (panel), `AnswerLine`, `ViewPreset` with shareable text encoding, `PresetBar`, and `NavigationTarget` with `Navigate()` and `NavigationProvider` (the shared keyboard and search contract for views the app draws, such as the map).
-- Document view with outline jumps, links, search and highlights; the Finder (command palette and global search over tables, documents and commands).
+- Line charts (`LineChart`: multiple series, second axis, legend toggles, crosshair values, zoom and pan, min/max decimation), the chart X-conomy's client draws with ImPlot today.
+- Document view with outline jumps, links, search, highlights and text selection; the Finder (command palette and global search over tables, documents and commands).
 - Showcase (`gloomy_showcase`) and benchmark (`gloomy_bench`, section 14.1).
 
-Not built yet: right-pinned columns and cell-range selection in the grid; trigram index; bidirectional text; number, date and time fields; charts beyond sparklines; the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
+Not built yet: right-pinned columns and cell-range selection in the grid; trigram index; bidirectional text; number, date and time fields; chart types beyond lines and sparklines (bars, candlesticks); the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
 

@@ -14,11 +14,15 @@ auto main(int argc, char **argv) -> int {
   int rows = 1000000;
   int tab = 0;
   std::string finder_query;
+  int theme = 0;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--rows") == 0 && i + 1 < argc) {
       rows = std::atoi(argv[++i]);
     } else if (std::strcmp(argv[i], "--tab") == 0 && i + 1 < argc) {
       tab = std::atoi(argv[++i]);
+    } else if (std::strcmp(argv[i], "--theme") == 0 && i + 1 < argc) {
+      // 0 dark, 1 light, 2 high contrast.
+      theme = std::atoi(argv[++i]);
     } else if (std::strcmp(argv[i], "--finder") == 0 && i + 1 < argc) {
       // Screenshots of the finder: open it with this query.
       finder_query = argv[++i];
@@ -27,6 +31,7 @@ auto main(int argc, char **argv) -> int {
   gloomy::showcase::ShowcaseState state;
   gloomy::showcase::InitShowcase(state, rows);
   state.tab = tab;
+  state.theme_request = theme;
   if (!finder_query.empty()) {
     state.finder.open = true;
     state.finder.query = finder_query;

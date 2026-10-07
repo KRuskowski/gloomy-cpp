@@ -8,6 +8,7 @@
 #include "app_shell.h"
 #include "gloomy/data/document.h"
 #include "gloomy/data/table_view.h"
+#include "gloomy/ui/chart.h"
 #include "gloomy/ui/data_grid.h"
 #include "gloomy/ui/dock.h"
 #include "gloomy/ui/document_view.h"
@@ -37,6 +38,12 @@ struct ShowcaseState {
   ui::ListState outline_list;
   int tab = 0;
   int theme = 0;
+  // Price index history for the overview chart.
+  std::vector<double> days;
+  std::vector<double> ore_index;
+  std::vector<double> energy_index;
+  std::vector<double> silicon_index;
+  ui::ChartState chart;
   std::vector<float> ore_history;
   std::vector<float> energy_history;
   double avg_ore = 0.0;

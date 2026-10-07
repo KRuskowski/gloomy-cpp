@@ -228,6 +228,11 @@ void MarketsTab(ui::Context &ctx, ShowcaseState &s) {
 // Panels: the level between the glance cards and the full table.
 void OverviewTab(ui::Context &ctx, ShowcaseState &s) {
   s.shortage_view->Update(ctx.time());
+  LayoutSpec outer;
+  outer.gap = 10;
+  outer.width = SizeSpec::Grow();
+  outer.align = ui::Align::kStretch;
+  ui::BeginColumn(ctx, outer);
   LayoutSpec row;
   row.gap = 10;
   row.width = SizeSpec::Grow();
@@ -271,6 +276,17 @@ void OverviewTab(ui::Context &ctx, ShowcaseState &s) {
       DrillTo(ctx, s, 2);
     }
   }
+  ui::End(ctx);
+  // Price history, like the current client's ImPlot charts.
+  const ui::ChartSeries series[] = {
+      {"Ore", s.days, s.ore_index},
+      {"Energy cells", s.days, s.energy_index},
+      {"Silicon wafers", s.days, s.silicon_index}};
+  ui::ChartOptions chart;
+  chart.x_label = "day";
+  chart.y_label = "% of base price";
+  chart.height = SizeSpec::Fixed(230);
+  ui::LineChart(ctx, "##price_chart", series, s.chart, chart);
   ui::End(ctx);
 }
 
@@ -380,6 +396,15 @@ void InitShowcase(ShowcaseState &s, int rows) {
 
   s.avg_ore = s.market->AveragePrice("Ore");
   s.avg_energy = s.market->AveragePrice("Energy Cells");
+  for (int i = 0; i <= 600; ++i) {
+    const double d = i / 6.0;
+    s.days.push_back(d);
+    s.ore_index.push_back(100 + 14 * std::sin(d * 0.21) +
+                          4 * std::sin(d * 1.7 + 1));
+    s.energy_index.push_back(100 + 5 * std::cos(d * 0.13) +
+                             2 * std::sin(d * 2.3));
+    s.silicon_index.push_back(92 + 0.12 * d + 6 * std::sin(d * 0.37 + 2));
+  }
   s.ore_history = History(s.avg_ore, 1);
   s.energy_history = History(s.avg_energy, 2);
   for (data::RowIndex r = 0; r < s.market->RowCount(); ++r) {
