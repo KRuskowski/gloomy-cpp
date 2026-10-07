@@ -14,24 +14,60 @@ Goals, in priority order:
 4. A renderer that draws into a host engine's Vulkan frame, so X-conomy's future engine can composite the UI over its own scene.
 5. Deterministic headless rendering for tests (lavapipe, reference PNGs).
 
-Non-goals for now: right-to-left and bidirectional text (the text pipeline leaves room for it, section 6), IME composition beyond committed text, accessibility APIs, a visual designer, declarative UI files (gloomy's RON). Charts are limited to sparklines and bars inside cells until X-conomy needs more.
+Non-goals for now: right-to-left and bidirectional text (the text pipeline leaves room for it, section 7), IME composition beyond committed text, accessibility APIs, a visual designer, declarative UI files (gloomy's RON). Charts are limited to sparklines and bars inside cells until X-conomy needs more.
 
-## 2. What maps from gloomy, what changes
+## 2. Guiding principle: deep data, accessible surface
+
+The operator's principle for the whole library: a deep spreadsheet under the entire game, but as accessible as possible; the game must not become Rule the Waves. Power users get every column, filter, grouping and export; a newcomer sees an answer, a reason and one obvious next step. These are first-class concepts of the library, built into the data layer and the widgets, not features bolted onto a grid.
+
+### 2.1 Answer-first views
+
+Every view leads with the answer to the player's question in one line, with its reason, and offers exactly one action to drill down into the full table behind it. Example: "Best trade: Ore, Mine 4 to Smelter 2, +12,400 Cr per trip, because ore sells 30% under average at Mine 4", with "Show all trades" opening the trades table.
+
+The rule that keeps answers honest: the answer is row one of the drill-down table. An `Answer` is a `ViewPreset` (2.4) over a source plus a headline formatter; the headline is computed from the first rows of that preset's query, and drilling down opens the same preset as a full grid with the answer row focused. No separate code path computes the headline, so it can never disagree with the table.
+
+### 2.2 Progressive disclosure: glance, panel, table
+
+Every data binding can be shown at three levels, all over the same `TableSource`, the same query and the same search string:
+
+- Glance: a headline value, a delta, a sparkline and a status colour (`SummaryCard`).
+- Panel: the key numbers, a compact grid of the preset's panel columns and the top rows (`SummaryPanel`).
+- Table: the full `DataGrid` with all columns, filters, grouping, aggregates and export.
+
+Enter (or a click) on a glance opens the panel, Enter on a panel opens the table, Backspace or Esc goes back up, and the search string and focused row carry over in both directions. A `DataBinding` (source, preset, search, focused `RowKey`) is the shared state; the three widgets are views of it.
+
+### 2.3 Explanations attached to data
+
+Any value can carry a short "why": a price with its cause, a profit with its breakdown, a ship's status with its reason. Explanations are part of the data layer:
+
+- `TableSource::Explain(row, col, Explanation &out)` fills a one-line reason, optional breakdown items (label, value, sign) and an optional link target; `ColumnInfo::explained` says whether a column has explanations, so columns without them cost nothing per cell.
+- `ExplainedValue` carries a scalar value plus its explanation for cards, labels and headlines.
+- The grid marks explained cells with a small corner tick; the explanation shows as a tooltip on hover or focus, inline under the value in panels, and pinned in a side note with F1 or `?`. Explanations are searchable like any other text.
+
+### 2.4 Saved and shareable views
+
+A `ViewPreset` is a plain value: id, name, description, source id, the `Query` (sort, filters, search, grouping, aggregates), the column layout (order, widths, visibility, pinning, renderers), the panel columns and the headline formatter id. The app ships curated presets as defaults; players save their own, duplicate and edit curated ones, and share a preset as a short text string (copy, paste). Unknown columns in a shared preset are ignored, so presets survive game updates. Newcomers only ever see curated presets; power users keep their spreadsheets.
+
+### 2.5 One keyboard and search contract everywhere
+
+Tables, lists, documents, charts and the map behave the same: arrows move a cursor over items, Enter activates or drills down, Backspace or Esc goes back, `/` or Ctrl+F searches within the view, F3 and Shift+F3 move between matches, typing jumps by prefix, Ctrl+C copies the current item or selection, Ctrl+K searches globally. Every view implements one `NavigationTarget` interface (item count, cursor, activate, drill down, bounding box of the cursor for scrolling) and one `SearchProvider`. The map is drawn by X-conomy, not by gloomy, but implements the same two interfaces (objects in spatial order, searchable by name), so the same keys work there.
+
+## 3. What maps from gloomy, what changes
 
 | gloomy (Rust) | gloomy-cpp | Why |
 |---|---|---|
 | wgpu, winit | Raw Vulkan 1.3, SDL2 window and input in a separate platform module | Operator decision; host-engine embedding |
-| `Widget` enum tree, rebuilt by the app, rendered by walking it | Immediate-mode declaration into a per-frame node tree, stable ids, persistent state keyed by id (section 3) | Same "UI is a function of state" idea, without the app owning widget structs; matches how the X-conomy client is written today (ImGui) |
+| `Widget` enum tree, rebuilt by the app, rendered by walking it | Immediate-mode declaration into a per-frame node tree, stable ids, persistent state keyed by id (section 4) | Same "UI is a function of state" idea, without the app owning widget structs; matches how the X-conomy client is written today (ImGui) |
 | SDF instanced primitives (rect, circle, line), per-batch scissor | Kept and extended: one unified instance format for shapes and glyphs, per-instance clip rect, one draw call per atlas page | Fewer state changes, order preserved for free |
 | `wgpu_text` (glyph_brush) | FreeType rasteriser, HarfBuzz shaping, own glyph atlas and shape cache | Real shaping, font fallback, control over caching |
 | Flexbox + grid layout over the `Widget` tree | Flex + grid layout over flat node arrays, Clay-style pass order with text wrapping between width and height passes | Correct wrapped-text heights, data-oriented |
 | Semantic palette, Dark/Light/High Contrast | Kept, extended with metrics (spacing, radii, font sizes) and derived widget styles | |
-| `DataSource` with `cell_text` and in-place `sort` | `TableSource` with typed batch access; queries produce row permutations and never touch the data (section 9) | Million-row tables, several views over one source |
+| `DataSource` with `cell_text` and in-place `sort` | `TableSource` with typed batch access; queries produce row permutations and never touch the data (section 10) | Million-row tables, several views over one source |
 | `InteractionState` with string action ids | Integer ids (hashed id stack), focus scopes, overlay layers | No string building per widget per frame |
-| Rich text tags (`<b>`, `<color=..>`) | Kept as inline markup, plus a block document model with sections, links and search (section 11) | Contracts |
+| Rich text tags (`<b>`, `<color=..>`) | Kept as inline markup, plus a block document model with sections, links and search (section 12) | Contracts |
 | `gloomy-driver` headless driver | Headless `Context` with an offscreen target; tests drive input events and compare PNGs | |
 
-## 3. Frame model
+## 4. Frame model
 
 The UI is declared every frame in immediate mode, but nothing is drawn while declaring:
 
@@ -47,14 +83,14 @@ renderer.Record(cmd);   // inside the host's render pass
 
 1. Declaration: widget functions push nodes into a flat `NodeTree` (parent, first child, next sibling, layout spec, paint data). Each node has a 64-bit id hashed from the id stack (`ui.PushId()`), like ImGui. Containers open and close (`BeginRow()` / `End()`).
 2. Interaction: widget functions answer "was I clicked, hovered, dragged" from the previous frame's layout boxes, looked up by id. A widget that did not exist last frame cannot be clicked this frame, which never matters in practice and keeps the frame single-pass. Input events are applied to the previous frame's boxes at `BeginFrame()`, before declaration, so a click resolves exactly once.
-3. Layout runs on the finished tree (section 7), then the paint pass walks it and appends to the `DrawList`. Virtualised widgets (grid, list, document) are one node each; they paint only their visible rows during the paint pass, once their box is known.
+3. Layout runs on the finished tree (section 8), then the paint pass walks it and appends to the `DrawList`. Virtualised widgets (grid, list, document) are one node each; they paint only their visible rows during the paint pass, once their box is known.
 4. Persistent widget state (scroll offsets, text edit cursors, open/closed, animation clocks) lives in a `StateStore` keyed by node id, created on first use and garbage-collected when an id has not been seen for a few frames. Large or app-relevant state (grid column layout, sort, filters, selection) is owned by the app in plain structs (`GridState`) so it can be saved, restored and shared between views; the widget only mutates it.
 
 Why not a retained widget tree: X-conomy's client is immediate-mode code over SoA tables and is being ported, and the expensive things in a data UI (sorting, filtering, searching, shaping) are cached explicitly by the layers that own them, not by a widget tree. Why not pure ImGui-style layout-while-declaring: flex layout and wrapped text need the whole tree before positions are known.
 
 Frame cost is O(visible nodes): a 1,000,000-row grid declares one node and paints about 50 rows.
 
-## 4. Module layout
+## 5. Module layout
 
 Like X-conomy: public headers in `include/gloomy/<module>/`, implementation in `src/gloomy/<module>/`, each module an OBJECT library collected into the static library `gloomy` (`cmake/BuildGloomyLib.cmake`), tests in `tests/<module>/` registered by `tests/cmake/<module>/test_<name>.cmake`.
 
@@ -69,9 +105,9 @@ Like X-conomy: public headers in `include/gloomy/<module>/`, implementation in `
 
 `data` has no graphics dependency, so the X-conomy simulation side or tools can use the query and search engine without a GPU. `platform` is the only module that sees SDL2; a host engine replaces it.
 
-## 5. Vulkan renderer
+## 6. Vulkan renderer
 
-### 5.1 Ownership
+### 6.1 Ownership
 
 Device ownership is separable from UI rendering:
 
@@ -81,7 +117,7 @@ Device ownership is separable from UI rendering:
 
 Vulkan 1.3 core features only: dynamic rendering (no render pass objects, so no render pass compatibility to negotiate with a host) and synchronization2. lavapipe and all current desktop drivers provide 1.3.
 
-### 5.2 One instance format for everything
+### 6.2 One instance format for everything
 
 Every UI element is an instanced quad with one 96-byte instance layout:
 
@@ -106,17 +142,17 @@ Instances are written to a host-visible, persistently mapped buffer per frame in
 
 Colour is blended in gamma space into a UNORM target (`R8G8B8A8_UNORM` offscreen, `B8G8R8A8_UNORM` swapchain), like most UI toolkits; this keeps reference PNGs byte-identical to what is shown. Shaders are GLSL compiled to SPIR-V at build time with `glslc` and embedded as `uint32_t` arrays (`cmake/CompileShaders.cmake`).
 
-### 5.3 Glyph atlas
+### 6.3 Glyph atlas
 
 Glyphs are rasterised as 8-bit coverage bitmaps at the exact pixel size with FreeType light hinting and four horizontal subpixel positions, not as SDF or MSDF. Data UIs are dominated by small text (11 to 14 px), where coverage bitmaps are clearly sharper than distance fields; zoomable or very large text can get an MSDF path later behind the same `kind`. The atlas is a 2D array image (`R8_UNORM`, 2048 x 2048, pages added on demand up to a limit) packed with a skyline allocator; uploads are batched per frame through a staging buffer in `Upload()`. When the atlas is full, it is cleared and refilled from the next frame's needs (one-frame hitch, rare).
 
-### 5.4 Offscreen and readback
+### 6.4 Offscreen and readback
 
 `OffscreenTarget` renders the same command stream into an image and copies it to a host buffer for PNG output. All image tests use it on lavapipe; the demo app has `--screenshot` for the same path on any device.
 
-## 6. Text
+## 7. Text
 
-- `text::FontSet` loads faces with FreeType from files or memory (a default face is embedded: Inter, SIL OFL) and keeps a fallback chain (for example Inter, then DejaVu Sans, then a CJK face if present).
+- `text::FontSet` loads faces with FreeType from files or memory (Liberation Sans and Liberation Mono are embedded, SIL OFL) and keeps a fallback chain (for example Liberation Sans, then DejaVu Sans, then a CJK face if present).
 - `text::Shaper` itemises a UTF-8 string into runs by font coverage (first face in the chain that has the code point), lets HarfBuzz guess script and direction per run, and shapes. The output is a `ShapedText`: glyph ids, faces, advances, offsets, and cluster byte offsets back into the source string. Cluster offsets are what makes caret placement, selection and search highlighting work on shaped text.
 - `text::ShapeCache` caches shaped single-line strings keyed by (hash of bytes, font, size), evicted by last-used frame. A grid shows the same few thousand strings frame after frame; shaping is paid once per string.
 - `text::LineBreaker` wraps shaped paragraphs at break opportunities (spaces and after hyphens now; UAX #14 later) and measures. Paragraph layouts are cached by (text, style, width).
@@ -124,7 +160,7 @@ Glyphs are rasterised as 8-bit coverage bitmaps at the exact pixel size with Fre
 
 Rich inline markup (`<b>`, `<i>`, `<color=#rrggbb>`, `<size=..>`, `<mono>`, `<link=target>`) from gloomy is kept and parsed into style runs; plain strings never pay for it.
 
-## 7. Layout engine
+## 8. Layout engine
 
 Nodes carry a layout spec: direction (row, column, grid, stack/overlay), padding, gap, main and cross alignment, per-axis sizing (`Fixed(px)`, `Fit` (content, with min/max), `Grow(weight)`, `Percent`), and grid templates (`Px`, `Fr`, `Auto` tracks, explicit cell and span). The algorithm follows Clay's pass order so wrapped text gets correct heights:
 
@@ -136,7 +172,7 @@ Nodes carry a layout spec: direction (row, column, grid, stack/overlay), padding
 
 Layout runs over the flat node arrays with no allocation in steady state. Text measurement is injected (`MeasureText` callback), so layout tests need no fonts.
 
-## 8. Input, focus and keyboard
+## 9. Input, focus and keyboard
 
 - Platform-neutral `InputEvent`s (pointer move/button/wheel, key down/up with modifiers, committed text) are queued by the platform layer and consumed in `BeginFrame()`.
 - Hover and press resolve against the previous frame's boxes, top overlay layer first. A pressed widget captures the pointer until release (drag resize, scrollbar, slider).
@@ -145,11 +181,11 @@ Layout runs over the flat node arrays with no allocation in steady state. Text m
 - Shortcuts are bound to command ids in a `Keymap` (rebindable, saved with settings), and every command is in the command palette with its binding shown. Widgets consume keys before the keymap only when focused and when the key is theirs (a text field eats letters, a grid does not eat Ctrl+P).
 - The clipboard is behind an interface the platform implements (SDL2 for now).
 
-## 9. Data layer
+## 10. Data layer
 
 The data layer is the core of the library. Its rules: data stays where the app keeps it; a view is a permutation of row indices; every pass over all rows is incremental, cancellable and off the frame path once the table is large.
 
-### 9.1 Sources
+### 10.1 Sources
 
 ```cpp
 enum class ColumnType : uint8_t { kInt64, kDouble, kText, kBool, kEnum };
@@ -173,20 +209,23 @@ class TableSource {
   virtual void FormatCell(RowIndex row, int col, std::string &out) const;
   /// Stable identity of a row across versions, for selection and focus.
   virtual auto RowKey(RowIndex row) const -> uint64_t { return row; }
+  /// The "why" behind a cell (section 2.3); false if there is none.
+  virtual auto Explain(RowIndex row, int col, Explanation &out) const
+      -> bool { return false; }
   /// Rows appended since `version`, if the source only appends (logs).
   virtual auto AppendedSince(uint64_t version) const
       -> std::optional<RowIndex>;
 };
 ```
 
-`ColumnInfo` names the column, its type, enum labels, an optional parent row column (tree data) and whether it is searchable. Implementations:
+`ColumnInfo` names the column, its type, enum labels, an optional parent row column (tree data), whether it is searchable and whether it has explanations. Implementations:
 
 - `ColumnarTable`: owns typed column vectors (`std::vector<int64_t>`, `std::vector<double>`, a text column as one byte blob plus offsets), appends rows, bumps the version. Good for logs and generated data.
 - `SpanTable`: zero-copy adapter over structure-of-arrays the app already has (X-conomy's `World` tables are exactly that): each column is a `std::span` or a callable `(RowIndex) -> value`. Formatting is a per-column callable.
 
 Batch reads exist so the sort and filter loops call a virtual function once per 4,096-row chunk, not once per cell.
 
-### 9.2 Queries and views
+### 10.2 Queries and views
 
 A `Query` is a value type and is what a "saved view" stores:
 
@@ -208,7 +247,7 @@ Executing a query against a source yields a `RowView`: a `std::vector<RowIndex>`
 Execution pipeline, each stage operating on index vectors and typed key columns:
 
 1. Filter: evaluate each filter column-wise over 4,096-row chunks into a selection vector; cheapest and most selective filters first.
-2. Search: substring match over the search corpus (9.3), restricted to the surviving rows.
+2. Search: substring match over the search corpus (10.3), restricted to the surviving rows.
 3. Sort: extract each sort key once into a contiguous key array (int64, double, or for text a 64-bit prefix key built from the case-folded first 8 bytes plus the string view for ties), then a stable sort of the index vector comparing prefix keys first. Above 100,000 rows the sort runs as parallel chunk sorts plus a merge on the worker pool.
 4. Group and aggregate: one pass over the sorted view (grouping columns are implicit leading sort keys).
 
@@ -221,7 +260,7 @@ Incrementality, which is what keeps typing and live data smooth:
 
 Execution model: a `QueryEngine` runs queries on a small worker pool against `std::shared_ptr<const TableSource>` snapshots. The UI keeps showing the previous `RowView` until the new one is ready (with a subtle busy indicator), then swaps it in at the start of a frame; a newer query cancels an older one at the next chunk boundary. Sources must not change while a snapshot is shared: an app either publishes immutable snapshots (X-conomy can produce per-tick UI tables) or opts into synchronous execution, which tables under about 50,000 rows use anyway because it finishes well within a frame.
 
-### 9.3 Search core
+### 10.3 Search core
 
 One search core serves tables, documents and global search:
 
@@ -232,28 +271,29 @@ One search core serves tables, documents and global search:
 - Corpora are built lazily on the first search of a table or document and kept up to date incrementally for append-only sources; for changed sources they are rebuilt in the background when the version changes, and the old corpus serves until then.
 - `FuzzyMatcher` (subsequence match with scoring for word starts, consecutive runs and case, like fzf) is used for the command palette and for global search over names, not for data cells.
 
-### 9.4 Global search
+### 10.4 Global search
 
 A `SearchRegistry` holds `SearchProvider`s (each table view, each open document, the command list, app-specific ones like "stations by name"). Global search fans a query out to all providers on the worker pool with a per-provider result cap and returns typed results (provider, label, context snippet with highlight ranges, a navigation callback). The command palette is the same UI with only the command provider and fuzzy matching.
 
-## 10. Widgets
+## 11. Widgets
 
 Designed from what professional data tools and games need, not from gloomy's list. Tiers say what comes first; the architecture (nodes, overlays, focus scopes, data layer) is the same for all of them.
 
-### 10.1 Tier 1: what the X-conomy client needs first
+### 11.1 Tier 1: what the X-conomy client needs first
 
-- Data grid, the centrepiece (10.2).
+- Data grid, the centrepiece (11.2).
+- Answer-first and progressive disclosure widgets (section 2): `SummaryCard` (glance: headline `ExplainedValue`, delta, sparkline, status colour, drill-down), `SummaryPanel` (panel: key numbers and a compact grid of the preset's panel columns), `AnswerLine` (one-line answer with reason and a single drill-down action), `ExplainedValue` display (value with a "why" tooltip or inline note), and a `PresetBar` to pick, save, duplicate and share `ViewPreset`s.
 - List: the X3-style single-column list (keyboard selection, Enter activates, type to jump, virtualised), implemented as a grid without header.
 - Search field: incremental, debounced to the frame, shows match count and busy state, Up/Down or F3 for next/previous match, Esc clears.
-- Document view for contracts (section 11).
+- Document view for contracts (section 12).
 - Panels and layout: split panes with draggable splitters, tabbed panel stacks, and a docking workspace whose layout tree (splits with ratios, tab stacks of panel ids) is a serialisable value. Panels are drawn by app callbacks per panel id. Drag-to-dock comes after keyboard and splitter handling.
 - Overlays: tooltips (delayed, follow the hovered node), context menus (nested, keyboard navigable), dropdowns and popups, modal dialogs (focus scope, Esc/Enter), toasts (timed, stacked, actionable).
-- Command palette (Ctrl+P / Ctrl+Shift+P) and global search (Ctrl+K), sections 9.4 and 8.
+- Command palette (Ctrl+P / Ctrl+Shift+P) and global search (Ctrl+K), sections 10.4 and 9.
 - Basics: label, rich label, button, icon button, checkbox, toggle, radio group, slider, number field, text field, dropdown/combo with search, tabs, scroll container, progress bar, separator, badge.
 
-### 10.2 Data grid
+### 11.2 Data grid
 
-State the app owns and can save as a named view (`GridState` plus its `Query`):
+State the app owns and can save as a `ViewPreset` (section 2.4):
 
 - Columns: order, width, visibility, pinned left or right, column groups (multi-level headers), per-column renderer and formatter.
 - Query: multi-column sort (click sorts, Shift+click adds a key, the header shows the key's rank), per-column typed filters (header filter popup), quick search, grouping with aggregates (sum, min, max, mean, count), tree rows.
@@ -264,11 +304,11 @@ Behaviour: virtual rows and columns (only visible cells format, shape and paint)
 
 Cell renderers: text, number (right aligned, units, thousands separators, signed colouring), bar (value against a column range), sparkline (source returns a small series), age-coloured text (value plus age to colour ramp, X-conomy's knowledge age), enum badge, icon plus text, and custom renderers that paint into the cell rect through the `DrawList`.
 
-### 10.3 Tier 2 and later
+### 11.3 Tier 2 and later
 
 Tree view (shares the grid's flattened-tree view), property grid, forms with field validation and error display, date and time fields, charts beyond sparklines (line, bar, candlestick for price history), drag and drop between views, multiple windows, a theme editor.
 
-## 11. Document view
+## 12. Document view
 
 Contracts are long, structured texts with references to game objects. The document model:
 
@@ -277,11 +317,11 @@ Contracts are long, structured texts with references to game objects. The docume
 - Headings form an outline (section navigator, jump by keyboard). Links are focusable and activate an app callback. Text can be selected and copied.
 - Search uses a document corpus (one document per block); matches are highlighted and F3 / Shift+F3 move between them, scrolling the block into view. Persistent highlight sets (for example "clauses that changed") use the same highlight path.
 
-## 12. Theming
+## 13. Theming
 
 `Theme` is a semantic palette (background, surface, surface_alt, primary, accent, text, text_muted, text_disabled, hover, active, focus, selection, success, warning, error, info, border, divider) plus metrics (base font size, spacing unit, radii, row height, border width). Dark (default), Light and High Contrast are built in. Widget styles are derived from the theme at use, with per-call overrides. An X3-style theme for X-conomy (thin borders, translucent panels, cyan accent) is just another theme. Themes are plain structs; a text format can come later.
 
-## 13. Keeping large data at 60 fps
+## 14. Keeping large data at 60 fps
 
 The frame budget is 16.6 ms; the rules that keep the UI inside it:
 
@@ -293,13 +333,13 @@ The frame budget is 16.6 ms; the rules that keep the UI inside it:
 
 The benchmark (phase 5) measures frame time at 1,000,000 rows while scrolling, re-sorting and typing a search, on lavapipe and on the real GPU, and reports query latencies separately.
 
-## 14. Testing
+## 15. Testing
 
 - Unit tests (GoogleTest) for core, layout (with a fake text measure), data (queries, narrowing, search, corpora), text (shaping results, line breaking) and widget behaviour (a headless `Context` fed with synthetic input events; assertions on state and on the produced draw list).
 - Image tests render offscreen on lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`) and compare against reference PNGs in `tests/reference/` with a per-channel tolerance and a maximum count of differing pixels. On mismatch the actual image and a diff image are written to the build tree. `GLOOMY_UPDATE_REFERENCES=1` rewrites the references; every rewrite is reviewed by looking at the images.
 - Debug builds enable `VK_LAYER_KHRONOS_validation`; a validation message fails the test (the debug messenger counts errors and tests assert zero).
 
-## 15. Phases
+## 16. Phases
 
 1. This document.
 2. Foundation: CMake project, Vulkan context, offscreen target, swapchain on an SDL2 window, SDF primitive pipeline, text with shaping and the atlas, minimal demo, headless image tests.
