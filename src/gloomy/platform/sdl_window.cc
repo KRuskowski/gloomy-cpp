@@ -59,14 +59,18 @@ auto TranslateKey(SDL_Keycode key) -> ui::Key {
 
 auto TranslateMods(Uint16 mod) -> std::uint8_t {
   std::uint8_t m = ui::kModNone;
-  if ((mod & KMOD_SHIFT) != 0)
+  if ((mod & KMOD_SHIFT) != 0) {
     m |= ui::kModShift;
-  if ((mod & KMOD_CTRL) != 0)
+  }
+  if ((mod & KMOD_CTRL) != 0) {
     m |= ui::kModCtrl;
-  if ((mod & KMOD_ALT) != 0)
+  }
+  if ((mod & KMOD_ALT) != 0) {
     m |= ui::kModAlt;
-  if ((mod & KMOD_GUI) != 0)
+  }
+  if ((mod & KMOD_GUI) != 0) {
     m |= ui::kModSuper;
+  }
   return m;
 }
 

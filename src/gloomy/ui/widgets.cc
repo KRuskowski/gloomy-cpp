@@ -307,18 +307,24 @@ auto Slider(Context &ctx, std::string_view label, float &value, float min,
   }
   if (ctx.HasFocus(id)) {
     const float step = (max - min) / 100.0F;
-    if (ctx.ConsumeKey(Key::kLeft))
+    if (ctx.ConsumeKey(Key::kLeft)) {
       value -= step;
-    if (ctx.ConsumeKey(Key::kRight))
+    }
+    if (ctx.ConsumeKey(Key::kRight)) {
       value += step;
-    if (ctx.ConsumeKey(Key::kPageDown))
+    }
+    if (ctx.ConsumeKey(Key::kPageDown)) {
       value -= step * 10;
-    if (ctx.ConsumeKey(Key::kPageUp))
+    }
+    if (ctx.ConsumeKey(Key::kPageUp)) {
       value += step * 10;
-    if (ctx.ConsumeKey(Key::kHome))
+    }
+    if (ctx.ConsumeKey(Key::kHome)) {
       value = min;
-    if (ctx.ConsumeKey(Key::kEnd))
+    }
+    if (ctx.ConsumeKey(Key::kEnd)) {
       value = max;
+    }
   }
   value = std::clamp(value, min, max);
 
@@ -1009,18 +1015,24 @@ auto List(Context &ctx, std::string_view label, ListState &state, int count,
       state.selected = std::clamp(to, 0, count - 1);
       keyboard_moved = true;
     };
-    if (ctx.ConsumeKey(Key::kDown))
+    if (ctx.ConsumeKey(Key::kDown)) {
       go(state.selected + 1);
-    if (ctx.ConsumeKey(Key::kUp))
+    }
+    if (ctx.ConsumeKey(Key::kUp)) {
       go(std::max(0, state.selected - 1));
-    if (ctx.ConsumeKey(Key::kPageDown))
+    }
+    if (ctx.ConsumeKey(Key::kPageDown)) {
       go(state.selected + page);
-    if (ctx.ConsumeKey(Key::kPageUp))
+    }
+    if (ctx.ConsumeKey(Key::kPageUp)) {
       go(state.selected - page);
-    if (ctx.ConsumeKey(Key::kHome))
+    }
+    if (ctx.ConsumeKey(Key::kHome)) {
       go(0);
-    if (ctx.ConsumeKey(Key::kEnd))
+    }
+    if (ctx.ConsumeKey(Key::kEnd)) {
       go(count - 1);
+    }
     if (ctx.ConsumeKey(Key::kEnter) && state.selected >= 0) {
       result.activated = true;
     }

@@ -458,20 +458,24 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
       state.cursor && !CursorOnData(state) && state.cursor_pos >= 0;
   const std::int64_t cur = std::max<std::int64_t>(state.cursor_pos, -1);
   std::uint8_t mods = 0;
-  while (ctx.ConsumeKeyAnyMods(Key::kDown, mods))
+  while (ctx.ConsumeKeyAnyMods(Key::kDown, mods)) {
     move(cur + 1, mods);
+  }
   while (ctx.ConsumeKeyAnyMods(Key::kUp, mods)) {
     move(std::max<std::int64_t>(0, cur - 1), mods);
   }
-  while (ctx.ConsumeKeyAnyMods(Key::kPageDown, mods))
+  while (ctx.ConsumeKeyAnyMods(Key::kPageDown, mods)) {
     move(cur + page, mods);
+  }
   while (ctx.ConsumeKeyAnyMods(Key::kPageUp, mods)) {
     move(std::max<std::int64_t>(0, cur - page), mods);
   }
-  while (ctx.ConsumeKeyAnyMods(Key::kHome, mods))
+  while (ctx.ConsumeKeyAnyMods(Key::kHome, mods)) {
     move(0, mods);
-  while (ctx.ConsumeKeyAnyMods(Key::kEnd, mods))
+  }
+  while (ctx.ConsumeKeyAnyMods(Key::kEnd, mods)) {
     move(n - 1, mods);
+  }
   if (ctx.ConsumeKey(Key::kLeft, kModAlt)) {
     // Move the cursor column left.
     if (state.cursor_col > 0) {

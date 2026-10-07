@@ -74,7 +74,7 @@ auto Atlas::AllocateOn(int page_index, int w, int h)
   const int x = page.skyline[best].x;
   const int y = best_y - h;
   // Insert the new segment and trim the ones it covers.
-  page.skyline.insert(page.skyline.begin() + static_cast<long>(best),
+  page.skyline.insert(page.skyline.begin() + static_cast<std::ptrdiff_t>(best),
                       Segment{x, y + h, w});
   for (std::size_t i = best + 1; i < page.skyline.size();) {
     Segment &s = page.skyline[i];
@@ -86,7 +86,7 @@ auto Atlas::AllocateOn(int page_index, int w, int h)
     s.x += shrink;
     s.w -= shrink;
     if (s.w <= 0) {
-      page.skyline.erase(page.skyline.begin() + static_cast<long>(i));
+      page.skyline.erase(page.skyline.begin() + static_cast<std::ptrdiff_t>(i));
     } else {
       break;
     }
@@ -95,7 +95,8 @@ auto Atlas::AllocateOn(int page_index, int w, int h)
   for (std::size_t i = 0; i + 1 < page.skyline.size();) {
     if (page.skyline[i].y == page.skyline[i + 1].y) {
       page.skyline[i].w += page.skyline[i + 1].w;
-      page.skyline.erase(page.skyline.begin() + static_cast<long>(i) + 1);
+      page.skyline.erase(page.skyline.begin() + static_cast<std::ptrdiff_t>(i) +
+                         1);
     } else {
       ++i;
     }

@@ -472,19 +472,24 @@ auto DocumentView(Context &ctx, std::string_view label,
 
   // Keys.
   if (ctx.HasFocus(id)) {
-    if (ctx.ConsumeKey(Key::kDown))
+    if (ctx.ConsumeKey(Key::kDown)) {
       st.scroll += kLineScroll;
-    if (ctx.ConsumeKey(Key::kUp))
+    }
+    if (ctx.ConsumeKey(Key::kUp)) {
       st.scroll -= kLineScroll;
+    }
     if (ctx.ConsumeKey(Key::kPageDown) || ctx.ConsumeKey(Key::kSpace)) {
       st.scroll += viewport * 0.9;
     }
-    if (ctx.ConsumeKey(Key::kPageUp))
+    if (ctx.ConsumeKey(Key::kPageUp)) {
       st.scroll -= viewport * 0.9;
-    if (ctx.ConsumeKey(Key::kHome))
+    }
+    if (ctx.ConsumeKey(Key::kHome)) {
       st.scroll = 0.0;
-    if (ctx.ConsumeKey(Key::kEnd))
+    }
+    if (ctx.ConsumeKey(Key::kEnd)) {
       st.scroll = 1e300;
+    }
   }
   if (ctx.ConsumeKey(Key::kF3) && ctx.HasFocus(id)) {
     GoToMatch(st, false);
