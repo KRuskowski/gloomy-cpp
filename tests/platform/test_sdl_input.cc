@@ -34,6 +34,14 @@ TEST(SdlInputTest, KeysAndModifiers) {
   EXPECT_EQ(TranslateEvent(e, 1.0F)->key, ui::Key::kF3);
   e.key.keysym.sym = SDLK_PAGEDOWN;
   EXPECT_EQ(TranslateEvent(e, 1.0F)->key, ui::Key::kPageDown);
+  e.key.keysym.sym = SDLK_PERIOD;
+  EXPECT_EQ(TranslateEvent(e, 1.0F)->key, ui::Key::kPeriod);
+  e.key.keysym.sym = SDLK_COMMA;
+  EXPECT_EQ(TranslateEvent(e, 1.0F)->key, ui::Key::kComma);
+  e.key.keysym.sym = SDLK_KP_PLUS;
+  EXPECT_EQ(TranslateEvent(e, 1.0F)->key, ui::Key::kEquals);
+  e.key.keysym.sym = SDLK_KP_MINUS;
+  EXPECT_EQ(TranslateEvent(e, 1.0F)->key, ui::Key::kMinus);
   e.key.keysym.sym = SDLK_CAPSLOCK;
   EXPECT_FALSE(TranslateEvent(e, 1.0F).has_value());
 }

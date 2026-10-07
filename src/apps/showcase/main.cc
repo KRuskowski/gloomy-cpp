@@ -7,7 +7,7 @@
 #include <cstring>
 #include <string>
 
-#include "app_shell.h"
+#include "gloomy/app/app_shell.h"
 #include "showcase_ui.h"
 
 auto main(int argc, char **argv) -> int {
@@ -36,17 +36,17 @@ auto main(int argc, char **argv) -> int {
     state.finder.open = true;
     state.finder.query = finder_query;
   }
-  gloomy::apps::ShellOptions options;
+  gloomy::app::ShellOptions options;
   options.title = "gloomy showcase";
   options.screenshot_frames = 6;
   options.frame = [&](gloomy::ui::Context &ctx,
-                      const gloomy::apps::FrameInfo &info) {
+                      const gloomy::app::FrameInfo &info) {
     gloomy::showcase::ShowcaseUi(ctx, info, state);
   };
-  gloomy::apps::ParseShellArgs(argc, argv, options);
+  gloomy::app::ParseShellArgs(argc, argv, options);
   options.settled = [&] {
     return !state.view->busy() && !state.answer_view->busy() &&
            !state.shortage_view->busy() && !state.station_search->busy();
   };
-  return gloomy::apps::RunApp(options);
+  return gloomy::app::RunApp(options);
 }

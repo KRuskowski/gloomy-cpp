@@ -58,6 +58,7 @@ add_library(GlText OBJECT
 )
 
 add_library(GlUi OBJECT
+  src/gloomy/ui/canvas.cc
   src/gloomy/ui/chart.cc
   src/gloomy/ui/context.cc
   src/gloomy/ui/data_grid.cc
@@ -150,3 +151,24 @@ if(BUILD_PLATFORM_SDL2)
   )
   gl_configure_target(gloomy_sdl2)
 endif()
+
+# App shell: runs a UI function in an SDL2 window or headless into a PNG.
+add_library(gloomy_app STATIC
+  src/gloomy/app/app_shell.cc
+)
+add_library(gloomy::app ALIAS gloomy_app)
+target_include_directories(gloomy_app
+  PUBLIC
+    ${GL_PUBLIC_BUILD_INCLUDE_DIRS}
+  PRIVATE
+    ${GL_PRIVATE_BUILD_INCLUDE_DIRS}
+)
+target_link_libraries(gloomy_app
+  PUBLIC
+    gloomy::gloomy
+)
+if(BUILD_PLATFORM_SDL2)
+  target_link_libraries(gloomy_app PRIVATE gloomy::sdl2)
+  target_compile_definitions(gloomy_app PRIVATE GLOOMY_HAVE_SDL2=1)
+endif()
+gl_configure_target(gloomy_app)

@@ -69,7 +69,7 @@ void DrillTo(ui::Context &ctx, ShowcaseState &s, int preset) {
   ctx.SetFocus(ctx.GetId("##market"));
 }
 
-void Header(ui::Context &ctx, const apps::FrameInfo &info, ShowcaseState &s) {
+void Header(ui::Context &ctx, const app::FrameInfo &info, ShowcaseState &s) {
   static const std::vector<std::string> kThemes{
       "Dark", "Light", "High contrast"};
   LayoutSpec row;
@@ -467,7 +467,7 @@ void InitShowcase(ShowcaseState &s, int rows) {
       });
 }
 
-void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
+void ShowcaseUi(ui::Context &ctx, const app::FrameInfo &info,
                 ShowcaseState &s) {
   const ui::Theme &t = ctx.theme();
   // Requests from commands and search hits.

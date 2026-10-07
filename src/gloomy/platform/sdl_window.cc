@@ -52,6 +52,17 @@ auto TranslateKey(SDL_Keycode key) -> ui::Key {
       return Key::kSpace;
     case SDLK_SLASH:
       return Key::kSlash;
+    case SDLK_PERIOD:
+      return Key::kPeriod;
+    case SDLK_COMMA:
+      return Key::kComma;
+    case SDLK_MINUS:
+    case SDLK_KP_MINUS:
+      return Key::kMinus;
+    case SDLK_EQUALS:
+    case SDLK_PLUS:
+    case SDLK_KP_PLUS:
+      return Key::kEquals;
     default:
       return Key::kNone;
   }

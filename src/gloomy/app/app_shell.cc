@@ -1,8 +1,13 @@
-#include "app_shell.h"
+#include "gloomy/app/app_shell.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
+#include <string_view>
+#include <thread>
 #include <vector>
 
 #include "gloomy/core/atlas.h"
@@ -17,7 +22,7 @@
 #include "gloomy/platform/sdl_window.h"
 #endif
 
-namespace gloomy::apps {
+namespace gloomy::app {
 
 namespace {
 
@@ -25,6 +30,11 @@ using Clock = std::chrono::steady_clock;
 
 auto Ms(Clock::duration d) -> double {
   return std::chrono::duration<double, std::milli>(d).count();
+}
+
+auto StartTheme(const ShellOptions &options, const text::DefaultFonts &fonts)
+    -> ui::Theme {
+  return options.theme ? options.theme(fonts) : ui::Theme::Dark(fonts);
 }
 
 auto Headless(const ShellOptions &options) -> int {
@@ -42,13 +52,23 @@ auto Headless(const ShellOptions &options) -> int {
   info.device_name = (*ctx)->device_name();
   Atlas atlas(1024, 4);
   text::TextSystem text_system(fonts, atlas);
-  ui::Context ui(text_system, ui::Theme::Dark(info.fonts));
+  ui::Context ui(text_system, StartTheme(options, info.fonts));
+  info.headless = true;
   const Vec2 viewport{static_cast<float>(options.size.width),
                       static_cast<float>(options.size.height)};
-  int frame = 0;
+  std::int64_t frame = 0;
+  std::vector<ui::InputEvent> events;
   auto run_frame = [&] {
     const auto start = Clock::now();
-    ui.BeginFrame(viewport, {}, 1.0 + frame / 60.0);
+    events.clear();
+    if (options.headless_input) {
+      options.headless_input(frame, events);
+    }
+    const double time = 1.0 + static_cast<double>(frame) / 60.0;
+    info.dt = frame == 0 ? 0.0 : time - info.time;
+    info.time = time;
+    info.frame = frame;
+    ui.BeginFrame(viewport, events, time);
     options.frame(ui, info);
     ui.EndFrame();
     info.ui_ms = Ms(Clock::now() - start);
@@ -111,7 +131,7 @@ auto Windowed(const ShellOptions &options) -> int {
   info.device_name = (*ctx)->device_name();
   Atlas atlas(1024, 4);
   text::TextSystem text_system(fonts, atlas);
-  ui::Context ui(text_system, ui::Theme::Dark(info.fonts));
+  ui::Context ui(text_system, StartTheme(options, info.fonts));
   platform::SdlWindow::InstallClipboard(ui);
   gfx::Swapchain swapchain(**ctx, (*window)->DrawableExtent());
   gfx::UiRenderer renderer(
@@ -122,19 +142,23 @@ auto Windowed(const ShellOptions &options) -> int {
   bool running = true;
   while (running) {
     events.clear();
-    running = (*window)->PollEvents(events);
+    running =
+        (*window)->PollEvents(events) && !(options.quit && options.quit());
     auto frame = swapchain.BeginFrame((*window)->DrawableExtent());
     if (!frame) {
       continue;
     }
     const auto now = Clock::now();
     info.frame_ms = Ms(now - last);
+    info.dt = info.frame == 0 ? 0.0 : info.frame_ms / 1000.0;
     last = now;
+    info.time = std::chrono::duration<double>(now - start).count();
     ui.BeginFrame({static_cast<float>(frame->extent.width),
                    static_cast<float>(frame->extent.height)},
                   events,
-                  std::chrono::duration<double>(now - start).count());
+                  info.time);
     options.frame(ui, info);
+    ++info.frame;
     ui.EndFrame();
     info.ui_ms = Ms(Clock::now() - now);
     renderer.Prepare(frame->cmd, frame->slot, ui.draw_lists());
@@ -166,6 +190,92 @@ void ParseShellArgs(int argc, char **argv, ShellOptions &options) {
   }
 }
 
+auto ParseKeyName(std::string_view name) -> ui::InputEvent {
+  using ui::Key;
+  std::uint8_t mods = ui::kModNone;
+  // Modifier prefixes: "Ctrl+", "Shift+", "Alt+".
+  for (;;) {
+    if (name.starts_with("Ctrl+")) {
+      mods |= ui::kModCtrl;
+      name.remove_prefix(5);
+    } else if (name.starts_with("Shift+")) {
+      mods |= ui::kModShift;
+      name.remove_prefix(6);
+    } else if (name.starts_with("Alt+")) {
+      mods |= ui::kModAlt;
+      name.remove_prefix(4);
+    } else {
+      break;
+    }
+  }
+
+  struct Named {
+    std::string_view name;
+    Key key;
+  };
+
+  static constexpr Named kNames[] = {
+      {"Tab", Key::kTab},
+      {"Enter", Key::kEnter},
+      {"Escape", Key::kEscape},
+      {"Esc", Key::kEscape},
+      {"Backspace", Key::kBackspace},
+      {"Delete", Key::kDelete},
+      {"Insert", Key::kInsert},
+      {"Left", Key::kLeft},
+      {"Right", Key::kRight},
+      {"Up", Key::kUp},
+      {"Down", Key::kDown},
+      {"Home", Key::kHome},
+      {"End", Key::kEnd},
+      {"PageUp", Key::kPageUp},
+      {"PageDown", Key::kPageDown},
+      {"Space", Key::kSpace},
+      {"Slash", Key::kSlash},
+      {"Period", Key::kPeriod},
+      {"Comma", Key::kComma},
+      {"Minus", Key::kMinus},
+      {"Equals", Key::kEquals},
+      {"Plus", Key::kEquals},
+  };
+  for (const Named &n : kNames) {
+    if (name == n.name) {
+      return ui::InputEvent::KeyDown(n.key, mods);
+    }
+  }
+  if (name.size() == 1 && name[0] >= 'A' && name[0] <= 'Z') {
+    return ui::InputEvent::KeyDown(
+        static_cast<Key>(static_cast<int>(Key::kA) + (name[0] - 'A')), mods);
+  }
+  if (name.size() == 1 && name[0] >= '0' && name[0] <= '9') {
+    return ui::InputEvent::KeyDown(
+        static_cast<Key>(static_cast<int>(Key::k0) + (name[0] - '0')), mods);
+  }
+  if (name.size() >= 2 && name.size() <= 3 && name[0] == 'F') {
+    const int n = std::atoi(std::string(name.substr(1)).c_str());
+    if (n >= 1 && n <= 12) {
+      return ui::InputEvent::KeyDown(
+          static_cast<Key>(static_cast<int>(Key::kF1) + n - 1), mods);
+    }
+  }
+  return ui::InputEvent::KeyDown(Key::kNone, mods);
+}
+
+auto ParseKeyList(std::string_view list, std::vector<ui::InputEvent> &out)
+    -> bool {
+  std::size_t start = 0;
+  while (start <= list.size()) {
+    const std::size_t end = std::min(list.find(',', start), list.size());
+    const ui::InputEvent e = ParseKeyName(list.substr(start, end - start));
+    if (e.key == ui::Key::kNone) {
+      return false;
+    }
+    out.push_back(e);
+    start = end + 1;
+  }
+  return true;
+}
+
 auto RunApp(const ShellOptions &options) -> int {
   if (!options.screenshot.empty()) {
     return Headless(options);
@@ -178,4 +288,4 @@ auto RunApp(const ShellOptions &options) -> int {
 #endif
 }
 
-}  // namespace gloomy::apps
+}  // namespace gloomy::app

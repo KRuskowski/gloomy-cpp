@@ -50,7 +50,7 @@ A `ViewPreset` is a plain value: id, name, description, source id, the `Query` (
 
 ### 2.5 One keyboard and search contract everywhere
 
-Tables, lists, documents, charts and the map behave the same: arrows move a cursor over items, Enter activates or drills down, Backspace or Esc goes back, `/` or Ctrl+F searches within the view, F3 and Shift+F3 move between matches, typing jumps by prefix, Ctrl+C copies the current item or selection, Ctrl+K searches globally. Every view implements one `NavigationTarget` interface (item count, cursor, activate, drill down, bounding box of the cursor for scrolling) and one `SearchProvider`. The map is drawn by X-conomy, not by gloomy, but implements the same two interfaces (objects in spatial order, searchable by name), so the same keys work there.
+Tables, lists, documents, charts and the map behave the same: arrows move a cursor over items, Enter activates or drills down, Backspace or Esc goes back, `/` or Ctrl+F searches within the view, F3 and Shift+F3 move between matches, typing jumps by prefix, Ctrl+C copies the current item or selection, Ctrl+K searches globally. Every view implements one `NavigationTarget` interface (item count, cursor, activate, drill down, bounding box of the cursor for scrolling) and one `SearchProvider`. The map is drawn by X-conomy on gloomy's `Canvas` (pan, zoom, picking), and implements the same two interfaces (objects in spatial order, searchable by name), so the same keys work there.
 
 ## 3. What maps from gloomy, what changes
 
@@ -378,6 +378,7 @@ Built:
 - Data: `TableSource`, `ColumnarTable`, `FunctionTable`, queries with typed filters, multi-key parallel sort, quick search, grouping and aggregates, narrowing/re-sort/cache/append paths, background `TableView`s, shared search corpora, fuzzy matching.
 - Data grid: everything in 11.2 (including grouping, tree rows, column groups and sparkline cells) except right pinning, cell-range selection and icon cells; plus a standard cell context menu ("only this value", "hide this value", copy).
 - Section 2: `ExplainedLabel`, `Sparkline`, `SummaryCard` (glance), `SummaryPanel` (panel), `AnswerLine`, `ViewPreset` with shareable text encoding, `PresetBar`, and `NavigationTarget` with `Navigate()` and `NavigationProvider` (the shared keyboard and search contract for views the app draws, such as the map).
+- Canvas (`Canvas`, `include/gloomy/ui/canvas.h`): a custom-draw area with a pan/zoom camera in double-precision world coordinates (drag, wheel around the pointer, +/- and Home while focused), clicks resolved to world points, and `PickNearest()` over app-supplied pick items with layers; the X-conomy galaxy and sector maps draw on it. Maps keep the keyboard contract of 2.5 through a `NavigationTarget`.
 - Line charts (`LineChart`: multiple series, second axis, legend toggles, crosshair values, zoom and pan, min/max decimation), the chart X-conomy's client draws with ImPlot today.
 - Document view with outline jumps, links, search, highlights and text selection; the Finder (command palette and global search over tables, documents and commands).
 - Showcase (`gloomy_showcase`) and benchmark (`gloomy_bench`, section 14.1).
