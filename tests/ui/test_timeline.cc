@@ -45,6 +45,16 @@ TEST(TimelineLayoutTest, CrowdedLabelsMoveUpALaneOrHide) {
   EXPECT_LT(slots[2].x, slots[1].x);
 }
 
+TEST(TimelineLayoutTest, TimesOutsideTheRangeSitAtTheEnds) {
+  const std::vector<double> times = {-5.0, 5.0, 100.0};
+  const std::vector<float> widths = {10.0F, 10.0F, 10.0F};
+  const auto slots =
+      LayoutTimeline(times, widths, 0.0, 10.0, 0.0F, 100.0F, 2, 4.0F);
+  EXPECT_FLOAT_EQ(slots[0].x, 0.0F);
+  EXPECT_FLOAT_EQ(slots[1].x, 50.0F);
+  EXPECT_FLOAT_EQ(slots[2].x, 100.0F);
+}
+
 TEST(TimelineLayoutTest, RangeCoversEventsAndNowWithPadding) {
   std::vector<TimelineEvent> events(2);
   events[0].time = 100.0;
@@ -112,6 +122,9 @@ TEST_F(TimelineImageTest, PastSolidFutureDashed) {
   const std::vector<TimelineEvent> events = MessageEvents();
   TimelineOptions options;
   options.now = 50.0;
+  // The award expected at 130 lies beyond the range: an arrow at the end.
+  options.t0 = -5.0;
+  options.t1 = 110.0;
   options.time_format = [](double v) {
     return "t+" + std::to_string(static_cast<int>(v));
   };

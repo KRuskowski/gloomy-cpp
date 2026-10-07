@@ -48,14 +48,23 @@ struct Geometry {
   float axis_y = 0.0F;
 
   auto X(double t) const -> float {
-    return x0 + static_cast<float>((t - t0) / (t1 - t0)) * (x1 - x0);
+    return x0 + static_cast<float>((std::clamp(t, t0, t1) - t0) / (t1 - t0)) *
+                    (x1 - x0);
   }
+
+  /// -1 before the range, 1 after it, 0 inside.
+  auto Outside(double t) const -> int { return t < t0 ? -1 : (t > t1 ? 1 : 0); }
 };
 
 auto MakeGeometry(const Rect &r, std::span<const TimelineEvent> events,
-                  double now) -> Geometry {
+                  const TimelineOptions &options) -> Geometry {
   Geometry g;
-  std::tie(g.t0, g.t1) = TimelineRange(events, now);
+  std::tie(g.t0, g.t1) = TimelineRange(events, options.now);
+  if (std::isfinite(options.t0) && std::isfinite(options.t1) &&
+      options.t1 > options.t0) {
+    g.t0 = options.t0;
+    g.t1 = options.t1;
+  }
   g.x0 = r.x0 + kSide;
   g.x1 = std::max(g.x0 + 1.0F, r.x1 - kSide);
   g.axis_y = r.y1 - kAxisZone * 0.5F;
@@ -77,7 +86,7 @@ void PaintTimeline(PaintContext &pc, const Rect &r,
   const Theme &t = pc.theme;
   const Palette &c = t.colors;
   gfx::DrawList &list = pc.list;
-  const Geometry g = MakeGeometry(r, events, options.now);
+  const Geometry g = MakeGeometry(r, events, options);
   const float small = t.metrics.small_font_size;
   const double step = NiceStep(g.t1 - g.t0, 4);
 
@@ -98,14 +107,8 @@ void PaintTimeline(PaintContext &pc, const Rect &r,
         std::max(pc.text.Measure(e.label, t.fonts.sans, small + 1),
                  pc.text.Measure(stamps.back(), t.fonts.sans, small)));
   }
-  const std::vector<TimelineSlot> slots = LayoutTimeline(times,
-                                                         widths,
-                                                         g.t0,
-                                                         g.t1,
-                                                         g.x0 - kSide,
-                                                         g.x1 + kSide,
-                                                         options.lanes,
-                                                         kLabelGap);
+  const std::vector<TimelineSlot> slots = LayoutTimeline(
+      times, widths, g.t0, g.t1, g.x0, g.x1, options.lanes, kLabelGap);
   for (std::size_t i = 0; i < events.size(); ++i) {
     const TimelineSlot &s = slots[i];
     if (s.lane < 0) {
@@ -153,6 +156,13 @@ void PaintTimeline(PaintContext &pc, const Rect &r,
     const Vec2 p{slots[i].x, g.axis_y};
     const Color color = MarkColor(t, e);
     const float grow = static_cast<int>(i) == hovered ? 1.5F : 0.0F;
+    if (const int side = g.Outside(e.time); side != 0) {
+      // Beyond the range: an arrow pointing out.
+      const float dx = static_cast<float>(side) * (6.0F + grow);
+      list.Line({p.x - dx, p.y - 6.0F}, {p.x, p.y}, 2.0F, color);
+      list.Line({p.x - dx, p.y + 6.0F}, {p.x, p.y}, 2.0F, color);
+      continue;
+    }
     switch (e.mark) {
       case TimelineMark::kDone:
         list.FillCircle(p, kDotRadius + grow, color);
@@ -213,7 +223,9 @@ auto LayoutTimeline(std::span<const double> times,
                           -std::numeric_limits<float>::infinity());
   for (const std::size_t i : order) {
     TimelineSlot &s = slots[i];
-    s.x = x0 + static_cast<float>((times[i] - t0) / span) * (x1 - x0);
+    s.x = x0 + static_cast<float>((std::clamp(times[i], t0, t0 + span) - t0) /
+                                  span) *
+                   (x1 - x0);
     const float w = i < widths.size() ? widths[i] : 0.0F;
     s.x0 = std::clamp(s.x - w * 0.5F, x0, std::max(x0, x1 - w));
     s.x1 = s.x0 + w;
@@ -234,7 +246,7 @@ void Timeline(Context &ctx, std::string_view label,
   const Theme &t = ctx.theme();
   const Id id = ctx.GetId(label);
   const Interaction it = ctx.Interact(id);
-  const Geometry g = MakeGeometry(it.rect, events, options.now);
+  const Geometry g = MakeGeometry(it.rect, events, options);
   // The marker nearest the pointer, if close enough.
   int hovered = -1;
   if (it.hovered) {

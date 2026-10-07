@@ -45,6 +45,11 @@ struct TimelineOptions {
   /// marker shows it. NaN for none.
   double now = std::numeric_limits<double>::quiet_NaN();
   std::string_view now_label = "now";
+  /// The time range shown; NaN for TimelineRange(). Events outside it sit
+  /// at the nearer end as arrows pointing out, so that a far deadline does
+  /// not squeeze what happens soon.
+  double t0 = std::numeric_limits<double>::quiet_NaN();
+  double t1 = std::numeric_limits<double>::quiet_NaN();
   /// Formats times under the labels and in tooltips; empty: numbers.
   std::function<std::string(double)> time_format;
 };
@@ -66,9 +71,9 @@ auto TimelineRange(std::span<const TimelineEvent> events, double now)
     -> std::pair<double, double>;
 
 /// Lays out the labels of a timeline: each event's marker at its time
-/// between x0 and x1, its label centred over it (kept inside [x0, x1]) in
-/// the lowest lane where it keeps `gap` from the label before it. Events
-/// are taken in time order.
+/// between x0 and x1 (times outside [t0, t1] at the nearer end), its label
+/// centred over it (kept inside [x0, x1]) in the lowest lane where it keeps
+/// `gap` from the label before it. Events are taken in time order.
 /// @param[in] times event times, any order
 /// @param[in] widths label widths, one per event
 /// @return one slot per event, in the order given
