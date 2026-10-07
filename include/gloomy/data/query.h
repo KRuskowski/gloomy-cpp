@@ -83,8 +83,21 @@ struct Query {
   std::vector<int> group_by;
   /// Values computed for every group.
   std::vector<Aggregate> aggregates;
+  /// Tree data: the column holding each row's parent RowKey (a key that
+  /// is no row's means "root"); -1 for flat data. Children follow their
+  /// parent, siblings sort by `sort`; filters and search keep the
+  /// ancestors of matching rows as context. Takes precedence over
+  /// group_by.
+  int tree_parent = -1;
 
   friend auto operator==(const Query &, const Query &) -> bool = default;
+};
+
+/// Bits of RowView::tree_flags.
+enum TreeFlag : std::uint8_t {
+  kTreeHasChildren = 1U << 0U,
+  /// Shown only as an ancestor of a match; it does not match itself.
+  kTreeContext = 1U << 1U,
 };
 
 /// A group of consecutive rows in a grouped RowView.
@@ -112,6 +125,9 @@ struct RowView {
   /// With grouping: the groups in pre-order (each followed by its
   /// subgroups).
   std::vector<RowGroup> groups;
+  /// Tree data: depth and TreeFlag bits per position in `rows`.
+  std::vector<std::uint16_t> depth;
+  std::vector<std::uint8_t> tree_flags;
   Query query;
   /// Source version the rows were computed from.
   std::uint64_t version = 0;

@@ -22,9 +22,11 @@ class DisplayRows {
   };
 
   /// Rebuilds from `view`; groups whose id is in `collapsed` hide their
-  /// rows and subgroups.
+  /// rows and subgroups. For tree data, rows whose RowKey (from `source`)
+  /// is in `collapsed` hide their descendants.
   void Build(const RowView &view,
-             const std::unordered_set<std::uint64_t> &collapsed);
+             const std::unordered_set<std::uint64_t> &collapsed,
+             const TableSource *source = nullptr);
 
   auto size() const -> std::size_t {
     return identity_ ? count_ : lines_.size();

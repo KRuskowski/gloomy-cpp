@@ -146,9 +146,9 @@ void TableView::Start() {
     job.corpus = corpus_;
   }
   // An append-only source that only grew: extend the current result.
-  if (source_->AppendOnly() && current_->query == query_ &&
-      current_->version != version && current_->version != 0 &&
-      current_->source_rows <= source_->RowCount()) {
+  if (source_->AppendOnly() && query_.tree_parent < 0 &&
+      current_->query == query_ && current_->version != version &&
+      current_->version != 0 && current_->source_rows <= source_->RowCount()) {
     job.prev = current_;
     job.append = true;
     if (corpus_ && corpus_->columns() == columns) {

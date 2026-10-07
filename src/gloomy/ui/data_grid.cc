@@ -187,7 +187,7 @@ void SyncDisplay(const data::TableView &view, GridState &state) {
   if (state.display_generation == view.generation() && !state.display_dirty) {
     return;
   }
-  state.display.Build(view.view(), state.collapsed);
+  state.display.Build(view.view(), state.collapsed, &view.source());
   state.display_generation = view.generation();
   state.display_dirty = false;
   ++state.display_version;
@@ -291,6 +291,44 @@ void SelectRange(const data::TableView &view, GridState &state, std::int64_t a,
       state.selection.Set(view.source().RowKey(*row), true);
     }
   }
+}
+
+// Tree data: depth and flags of the row on `line` (data lines only).
+struct TreeInfo {
+  bool tree = false;
+  std::uint16_t depth = 0;
+  std::uint8_t flags = 0;
+};
+
+auto TreeAt(const data::TableView &view, const GridState &state,
+            std::int64_t line) -> TreeInfo {
+  const data::RowView &v = view.view();
+  if (v.depth.empty() || line < 0 || line >= LineCount(state)) {
+    return {};
+  }
+  const data::DisplayRows::Line l =
+      state.display.At(static_cast<std::size_t>(line));
+  if (l.group >= 0) {
+    return {};
+  }
+  return {true, v.depth[l.pos], v.tree_flags[l.pos]};
+}
+
+// Collapses (or expands) the tree row on `line`.
+void ToggleTree(const data::TableView &view, GridState &state,
+                std::int64_t line, std::optional<bool> collapse = {}) {
+  const auto row = LineRow(view, state, line);
+  if (!row) {
+    return;
+  }
+  const std::uint64_t key = view.source().RowKey(*row);
+  const bool now = collapse.value_or(!state.collapsed.contains(key));
+  if (now) {
+    state.collapsed.insert(key);
+  } else {
+    state.collapsed.erase(key);
+  }
+  state.display_dirty = true;
 }
 
 // Collapses (or expands) the group on `line`; toggles without `collapse`.
@@ -445,6 +483,32 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
       ++state.cursor_col;
     }
   }
+  // Tree rows: Left collapses or goes to the parent, Right expands or goes
+  // to the first child.
+  const TreeInfo tree = TreeAt(view, state, state.cursor_pos);
+  if (tree.tree && state.cursor) {
+    const bool has_children = (tree.flags & data::kTreeHasChildren) != 0;
+    const bool collapsed = state.collapsed.contains(*state.cursor);
+    if (ctx.ConsumeKey(Key::kLeft)) {
+      if (has_children && !collapsed) {
+        ToggleTree(view, state, state.cursor_pos, true);
+      } else {
+        for (std::int64_t l = state.cursor_pos - 1; l >= 0; --l) {
+          if (TreeAt(view, state, l).depth < tree.depth) {
+            move(l, kModNone);
+            break;
+          }
+        }
+      }
+    }
+    if (ctx.ConsumeKey(Key::kRight)) {
+      if (has_children && collapsed) {
+        ToggleTree(view, state, state.cursor_pos, false);
+      } else if (has_children) {
+        move(state.cursor_pos + 1, kModNone);
+      }
+    }
+  }
   // On a group header, Left collapses and Right expands.
   if (on_group && ctx.ConsumeKey(Key::kLeft)) {
     ToggleGroup(view, state, state.cursor_pos, true);
@@ -546,6 +610,17 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
       // A group header: the cursor goes there and the group toggles.
       SetCursor(view, state, hit.pos);
       ToggleGroup(view, state, hit.pos);
+    } else if (const TreeInfo tree = hit.kind == Hit::Kind::kCell
+                                         ? TreeAt(view, state, hit.pos)
+                                         : TreeInfo{};
+               tree.tree && (tree.flags & data::kTreeHasChildren) != 0 &&
+               !g.cols.empty() && hit.col == g.cols.front().index &&
+               press.x >= g.cols.front().x0 + kCellPad + 14.0F * tree.depth &&
+               press.x <
+                   g.cols.front().x0 + kCellPad + 14.0F * tree.depth + 16.0F) {
+      // The chevron of a tree row.
+      SetCursor(view, state, hit.pos);
+      ToggleTree(view, state, hit.pos);
     } else if (hit.kind == Hit::Kind::kCell) {
       const std::uint8_t mods = ctx.press_mods();
       const std::int64_t anchor_pos = state.anchor ? state.anchor_pos : -1;
@@ -794,8 +869,10 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
   const Geometry geo = MakeGeometry(state, r, th);
   const auto &groups = view.view().groups;
   const auto &aggregates = view.view().query.aggregates;
+  const bool tree = !view.view().depth.empty();
   const float indent =
-      14.0F * static_cast<float>(view.view().query.group_by.size());
+      tree ? 0.0F
+           : 14.0F * static_cast<float>(view.view().query.group_by.size());
   gfx::DrawList &list = pc.list;
   const float font = th.metrics.font_size;
   const float small = th.metrics.small_font_size + 1;
@@ -859,8 +936,30 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
       list.PushClip(cell_rect);
       s.FormatCell(row, col.column, cell);
       Color fg = c.text;
-      // Grouped rows indent their first column under the group headers.
-      const float in = span.index == geo.cols.front().index ? indent : 0.0F;
+      // Grouped rows indent their first column under the group headers;
+      // tree rows by depth, after a chevron.
+      const bool first_col = span.index == geo.cols.front().index;
+      float in = first_col ? indent : 0.0F;
+      if (tree && first_col) {
+        const float level = 14.0F * view.view().depth[line.pos];
+        in = level + 16.0F;
+        if ((view.view().tree_flags[line.pos] & data::kTreeHasChildren) != 0) {
+          const float cx = span.x0 + kCellPad + level;
+          const float cy = std::round(y + geo.row_h * 0.5F);
+          if (state.collapsed.contains(key)) {
+            list.Line({cx + 3, cy - 4}, {cx + 7, cy}, 1.5F, c.text_muted);
+            list.Line({cx + 7, cy}, {cx + 3, cy + 4}, 1.5F, c.text_muted);
+          } else {
+            list.Line({cx + 1, cy - 2}, {cx + 5, cy + 2}, 1.5F, c.text_muted);
+            list.Line({cx + 5, cy + 2}, {cx + 9, cy - 2}, 1.5F, c.text_muted);
+          }
+        }
+      }
+      if (tree &&
+          (view.view().tree_flags[line.pos] & data::kTreeContext) != 0) {
+        // Ancestors shown only for context are dimmed.
+        fg = c.text_disabled;
+      }
       const Rect text_box{
           span.x0 + kCellPad + in, y, span.x1 - kCellPad, y + geo.row_h};
       switch (col.renderer) {

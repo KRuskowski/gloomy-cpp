@@ -6,6 +6,7 @@
 #include "gloomy/data/columnar_table.h"
 #include "gloomy/data/display_rows.h"
 #include "gloomy/data/query.h"
+#include "gloomy/data/search.h"
 
 namespace gloomy::data {
 namespace {
@@ -97,6 +98,68 @@ TEST(GroupingTest, IdentityWithoutGrouping) {
   EXPECT_EQ(d.size(), 5U);
   EXPECT_EQ(d.At(3).pos, 3U);
   EXPECT_EQ(d.LineOfPos(2), 2);
+}
+
+// name, parent (row key, -1 for none), value
+auto Tree() -> ColumnarTable {
+  ColumnInfo name{.name = "name", .title = "Name", .type = ColumnType::kText};
+  ColumnInfo parent{
+      .name = "parent", .title = "Parent", .type = ColumnType::kInt64};
+  parent.searchable = false;
+  ColumnInfo value{
+      .name = "value", .title = "Value", .type = ColumnType::kInt64};
+  ColumnarTable t({name, parent, value});
+  t.AddRow({"Argon Prime", std::int64_t{-1}, std::int64_t{2}});     // 0
+  t.AddRow({"Ore Belt", std::int64_t{-1}, std::int64_t{1}});        // 1
+  t.AddRow({"Trading Station", std::int64_t{0}, std::int64_t{5}});  // 2
+  t.AddRow({"Shipyard", std::int64_t{0}, std::int64_t{3}});         // 3
+  t.AddRow({"Ore Mine", std::int64_t{1}, std::int64_t{7}});         // 4
+  t.AddRow({"Freighter", std::int64_t{2}, std::int64_t{9}});        // 5
+  return t;
+}
+
+TEST(TreeTest, DepthFirstWithSortedSiblings) {
+  const ColumnarTable t = Tree();
+  Query q;
+  q.tree_parent = 1;
+  q.sort = {{2, SortDirection::kAscending}};
+  const RowView v = RunQuery(t, q);
+  // Roots by value: Ore Belt (1), Argon Prime (2); Argon's children by
+  // value: Shipyard (3), Trading Station (5) with its Freighter.
+  EXPECT_EQ(v.rows, (std::vector<RowIndex>{1, 4, 0, 3, 2, 5}));
+  EXPECT_EQ(v.depth, (std::vector<std::uint16_t>{0, 1, 0, 1, 1, 2}));
+  EXPECT_TRUE(v.tree_flags[2] & kTreeHasChildren);
+  EXPECT_FALSE(v.tree_flags[3] & kTreeHasChildren);
+}
+
+TEST(TreeTest, MatchesKeepTheirAncestorsAsContext) {
+  const ColumnarTable t = Tree();
+  auto corpus = SearchCorpus::Build(t, {});
+  Query q;
+  q.tree_parent = 1;
+  q.search = "freighter";
+  const RowView v = *Execute(t, q, nullptr, corpus.get());
+  EXPECT_EQ(v.rows, (std::vector<RowIndex>{0, 2, 5}));
+  EXPECT_TRUE(v.tree_flags[0] & kTreeContext);
+  EXPECT_TRUE(v.tree_flags[1] & kTreeContext);
+  EXPECT_FALSE(v.tree_flags[2] & kTreeContext);
+}
+
+TEST(TreeTest, CollapsedRowsHideDescendants) {
+  const ColumnarTable t = Tree();
+  Query q;
+  q.tree_parent = 1;
+  const RowView v = RunQuery(t, q);
+  // Source order: Argon(0) [Trading(2) [Freighter(5)], Shipyard(3)],
+  // Ore Belt(1) [Mine(4)].
+  ASSERT_EQ(v.rows, (std::vector<RowIndex>{0, 2, 5, 3, 1, 4}));
+  DisplayRows d;
+  d.Build(v, {t.RowKey(0)}, &t);
+  // Argon Prime, Ore Belt, Ore Mine.
+  EXPECT_EQ(d.size(), 3U);
+  d.Build(v, {t.RowKey(2)}, &t);
+  EXPECT_EQ(d.size(), 5U);
+  EXPECT_EQ(d.LineOfPos(2), -1);
 }
 
 }  // namespace

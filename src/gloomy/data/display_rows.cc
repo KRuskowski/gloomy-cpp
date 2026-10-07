@@ -3,10 +3,31 @@
 namespace gloomy::data {
 
 void DisplayRows::Build(const RowView &view,
-                        const std::unordered_set<std::uint64_t> &collapsed) {
+                        const std::unordered_set<std::uint64_t> &collapsed,
+                        const TableSource *source) {
   lines_.clear();
   line_of_pos_.clear();
   line_of_group_.clear();
+  if (!view.depth.empty() && source != nullptr && !collapsed.empty()) {
+    // Tree: skip the descendants of collapsed rows.
+    identity_ = false;
+    line_of_pos_.assign(view.rows.size(), -1);
+    std::int32_t skip_below = -1;
+    for (std::uint32_t i = 0; i < view.rows.size(); ++i) {
+      const std::int32_t d = view.depth[i];
+      if (skip_below >= 0 && d > skip_below) {
+        continue;
+      }
+      skip_below = -1;
+      line_of_pos_[i] = static_cast<std::int64_t>(lines_.size());
+      lines_.push_back({-1, i});
+      if ((view.tree_flags[i] & kTreeHasChildren) != 0 &&
+          collapsed.contains(source->RowKey(view.rows[i]))) {
+        skip_below = d;
+      }
+    }
+    return;
+  }
   if (view.groups.empty()) {
     identity_ = true;
     count_ = view.rows.size();

@@ -98,5 +98,58 @@ TEST_F(DataGridImageTest, GroupedGrid) {
   testing::ExpectMatchesReference(Render(h, {720, 330}), "data_grid_grouped");
 }
 
+TEST_F(DataGridImageTest, TreeGrid) {
+  testing::UiHarness h({560, 260});
+  data::ColumnInfo name{
+      .name = "name", .title = "Object", .type = data::ColumnType::kText};
+  data::ColumnInfo parent{
+      .name = "parent", .title = "Parent", .type = data::ColumnType::kInt64};
+  parent.searchable = false;
+  data::ColumnInfo cargo{
+      .name = "cargo", .title = "Cargo", .type = data::ColumnType::kInt64};
+  cargo.unit = " t";
+  auto table = std::make_shared<data::ColumnarTable>(
+      std::vector<data::ColumnInfo>{name, parent, cargo});
+
+  const struct {
+    const char *name;
+    std::int64_t parent;
+    std::int64_t cargo;
+  } kRows[] = {{"Argon Prime", -1, 0},
+               {"Trading Station", 0, 1200},
+               {"Mercury Hauler", 1, 340},
+               {"Mercury Express", 1, 120},
+               {"Shipyard", 0, 80},
+               {"Ore Belt", -1, 0},
+               {"Ore Mine Alpha", 5, 5400},
+               {"Ore Mine Beta", 5, 3100},
+               {"Mercury Tanker", 7, 900},
+               {"Home of Light", -1, 0}};
+
+  for (const auto &r : kRows) {
+    table->AddRow({std::string_view(r.name), r.parent, r.cargo});
+  }
+  data::TableView view(table);
+  GridState state;
+  state.columns = DefaultColumns(*table);
+  state.columns[0].width = 260;
+  state.columns[1].visible = false;
+  state.query.tree_parent = 1;
+  state.query.search = "mercury";
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##tree", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {560, 260}), "data_grid_tree");
+}
+
 }  // namespace
 }  // namespace gloomy::ui

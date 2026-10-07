@@ -5,6 +5,7 @@
 #include <cstring>
 #include <limits>
 #include <numeric>
+#include <unordered_map>
 
 #include "gloomy/core/id.h"
 #include "gloomy/core/parallel.h"
@@ -122,8 +123,10 @@ auto Compare(const KeyColumn &k, std::uint32_t a, std::uint32_t b) -> int {
 }  // namespace
 
 auto IsNarrowing(const Query &prev, const Query &next) -> bool {
+  // Trees add context rows, so earlier tree results are not subsets.
   if (prev.sort != next.sort || prev.search_columns != next.search_columns ||
-      prev.group_by != next.group_by) {
+      prev.group_by != next.group_by || prev.tree_parent >= 0 ||
+      next.tree_parent >= 0) {
     return false;
   }
   for (const Filter &f : prev.filters) {
@@ -260,7 +263,8 @@ auto BuildGroups(const TableSource &source, const Query &query, RowView &view,
 }
 
 auto SameSelection(const Query &prev, const Query &next) -> bool {
-  return prev.filters == next.filters && prev.search == next.search &&
+  return prev.tree_parent < 0 && next.tree_parent < 0 &&
+         prev.filters == next.filters && prev.search == next.search &&
          prev.search_columns == next.search_columns;
 }
 
@@ -383,6 +387,99 @@ auto SortRows(const TableSource &source, std::span<const SortKey> keys,
   return true;
 }
 
+namespace {
+
+// Arranges matching rows (and their ancestors, as context) as a tree in
+// depth-first order with siblings sorted.
+auto BuildTree(const TableSource &source, const Query &query, RowView &view,
+               const std::atomic<bool> *cancel) -> bool {
+  const RowIndex n = source.RowCount();
+  const int col = query.tree_parent;
+  std::unordered_map<std::uint64_t, RowIndex> row_of_key;
+  row_of_key.reserve(n);
+  for (RowIndex r = 0; r < n; ++r) {
+    row_of_key.emplace(source.RowKey(r), r);
+  }
+  constexpr RowIndex kNone = ~RowIndex{0};
+  auto parent_of = [&](RowIndex r) -> RowIndex {
+    const auto key = static_cast<std::uint64_t>(source.GetInt64(col, r));
+    const auto it = row_of_key.find(key);
+    return it == row_of_key.end() || it->second == r ? kNone : it->second;
+  };
+  // 1 = matches, 2 = context.
+  std::vector<std::uint8_t> included(n, 0);
+  for (const RowIndex r : view.rows) {
+    included[r] = 1;
+  }
+  for (const RowIndex r : view.rows) {
+    RowIndex p = parent_of(r);
+    // The step limit guards against cycles in bad data.
+    for (RowIndex steps = 0; p != kNone && steps < n; ++steps) {
+      if (included[p] != 0) {
+        break;
+      }
+      included[p] = 2;
+      p = parent_of(p);
+    }
+  }
+  if (Cancelled(cancel)) {
+    return false;
+  }
+  std::unordered_map<RowIndex, std::vector<RowIndex>> children;
+  std::vector<RowIndex> roots;
+  for (RowIndex r = 0; r < n; ++r) {
+    if (included[r] == 0) {
+      continue;
+    }
+    const RowIndex p = parent_of(r);
+    if (p != kNone && included[p] != 0) {
+      children[p].push_back(r);
+    } else {
+      roots.push_back(r);
+    }
+  }
+  if (!SortRows(source, query.sort, roots, cancel)) {
+    return false;
+  }
+  for (auto &[parent, list] : children) {
+    if (!SortRows(source, query.sort, list, cancel)) {
+      return false;
+    }
+  }
+  view.rows.clear();
+  view.depth.clear();
+  view.tree_flags.clear();
+  std::vector<std::uint8_t> visited(n, 0);
+  // Depth-first, iteratively; siblings are pushed in reverse.
+  std::vector<std::pair<RowIndex, std::uint16_t>> stack;
+  for (auto it = roots.rbegin(); it != roots.rend(); ++it) {
+    stack.emplace_back(*it, 0);
+  }
+  while (!stack.empty()) {
+    const auto [r, d] = stack.back();
+    stack.pop_back();
+    if (visited[r] != 0) {
+      continue;
+    }
+    visited[r] = 1;
+    const auto kids = children.find(r);
+    const bool has_children = kids != children.end() && !kids->second.empty();
+    view.rows.push_back(r);
+    view.depth.push_back(d);
+    view.tree_flags.push_back(
+        static_cast<std::uint8_t>((has_children ? kTreeHasChildren : 0) |
+                                  (included[r] == 2 ? kTreeContext : 0)));
+    if (has_children) {
+      for (auto it = kids->second.rbegin(); it != kids->second.rend(); ++it) {
+        stack.emplace_back(*it, static_cast<std::uint16_t>(d + 1));
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 auto Execute(const TableSource &source, const Query &query, const RowView *prev,
              const SearchCorpus *corpus, const std::atomic<bool> *cancel)
     -> std::optional<RowView> {
@@ -393,7 +490,7 @@ auto Execute(const TableSource &source, const Query &query, const RowView *prev,
   const bool same_data = prev != nullptr && prev->version == result.version;
 
   if (same_data && prev->query == query) {
-    result.rows = prev->rows;
+    result = *prev;
     result.path = RowView::Path::kCached;
     return result;
   }
@@ -449,6 +546,12 @@ auto Execute(const TableSource &source, const Query &query, const RowView *prev,
     }
   }
 
+  if (query.tree_parent >= 0) {
+    if (!BuildTree(source, query, result, cancel)) {
+      return std::nullopt;
+    }
+    return result;
+  }
   if (!sorted && !SortRows(source, EffectiveSort(query), result.rows, cancel)) {
     return std::nullopt;
   }

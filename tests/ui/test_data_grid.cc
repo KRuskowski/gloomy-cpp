@@ -294,6 +294,76 @@ TEST_F(DataGridTest, GroupByFromTheHeaderMenu) {
   EXPECT_EQ(state_.query.group_by, (std::vector<int>{2}));
 }
 
+// Sectors with stations with ships: row keys are row indices.
+auto UniverseTree() -> std::shared_ptr<data::ColumnarTable> {
+  data::ColumnInfo name{
+      .name = "name", .title = "Name", .type = data::ColumnType::kText};
+  data::ColumnInfo parent{
+      .name = "parent", .title = "Parent", .type = data::ColumnType::kInt64};
+  data::ColumnInfo cargo{
+      .name = "cargo", .title = "Cargo", .type = data::ColumnType::kInt64};
+  auto t = std::make_shared<data::ColumnarTable>(
+      std::vector<data::ColumnInfo>{name, parent, cargo});
+  t->AddRow({"Argon Prime", std::int64_t{-1}, std::int64_t{0}});       // 0
+  t->AddRow({"Trading Station", std::int64_t{0}, std::int64_t{100}});  // 1
+  t->AddRow({"Mercury", std::int64_t{1}, std::int64_t{40}});           // 2
+  t->AddRow({"Shipyard", std::int64_t{0}, std::int64_t{10}});          // 3
+  t->AddRow({"Ore Belt", std::int64_t{-1}, std::int64_t{0}});          // 4
+  t->AddRow({"Ore Mine", std::int64_t{4}, std::int64_t{70}});          // 5
+  return t;
+}
+
+TEST(DataGridTreeTest, KeysWalkTheTree) {
+  UiHarness h({700, 400});
+  auto table = UniverseTree();
+  data::TableView view(table);
+  GridState state;
+  state.query.tree_parent = 1;
+  state.columns = DefaultColumns(*table);
+  state.columns[1].visible = false;
+  auto ui = [&](Context &ctx) {
+    DataGrid(ctx, "##tree", view, state);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  EXPECT_EQ(state.display.size(), 6U);
+  h.ctx().SetFocus(h.ctx().GetId("##tree"));
+  h.Frame(ui, UiHarness::Key(Key::kDown));   // Argon Prime
+  h.Frame(ui, UiHarness::Key(Key::kRight));  // to its first child
+  EXPECT_EQ(state.cursor_pos, 1);
+  h.Frame(ui, UiHarness::Key(Key::kLeft));  // collapse Trading Station
+  h.Frame(ui);
+  EXPECT_EQ(state.display.size(), 5U);
+  h.Frame(ui, UiHarness::Key(Key::kLeft));  // up to Argon Prime
+  EXPECT_EQ(state.cursor_pos, 0);
+  h.Frame(ui, UiHarness::Key(Key::kLeft));  // collapse Argon Prime
+  h.Frame(ui);
+  EXPECT_EQ(state.display.size(), 3U);
+  h.Frame(ui, UiHarness::Key(Key::kRight));  // expand again
+  h.Frame(ui);
+  EXPECT_EQ(state.display.size(), 5U) << "Trading Station stays collapsed";
+}
+
+TEST(DataGridTreeTest, ChevronClickToggles) {
+  UiHarness h({700, 400});
+  auto table = UniverseTree();
+  data::TableView view(table);
+  GridState state;
+  state.query.tree_parent = 1;
+  auto ui = [&](Context &ctx) {
+    DataGrid(ctx, "##tree", view, state);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  const Rect body = h.ctx().LastRect(h.ctx().GetId("##tree")).value();
+  // The chevron of the first row: left edge plus cell padding.
+  const Vec2 p{body.x0 + 6 + 5, body.y0 + 26 + 11};
+  h.Frame(ui, UiHarness::Click(p));
+  h.Frame(ui);
+  EXPECT_EQ(state.display.size(), 3U);
+  EXPECT_TRUE(state.collapsed.contains(0));
+}
+
 class DataGridMillionTest : public DataGridTest {
  protected:
   DataGridMillionTest() : DataGridTest(1000000) {}
