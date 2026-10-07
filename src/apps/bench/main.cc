@@ -60,8 +60,13 @@ struct Samples {
 
   void Print(const char *name) const {
     std::printf("| %-28s | %5zu | %6.2f | %6.2f | %6.2f | %6.2f | %6.2f |\n",
-                name, ui.size(), Average(ui), Percentile(ui, 0.95),
-                Percentile(ui, 1.0), Average(gpu), Percentile(gpu, 0.95));
+                name,
+                ui.size(),
+                Average(ui),
+                Percentile(ui, 0.95),
+                Percentile(ui, 1.0),
+                Average(gpu),
+                Percentile(gpu, 0.95));
   }
 };
 
@@ -76,8 +81,12 @@ struct Latency {
         frames.empty() ? 0.0
                        : std::accumulate(frames.begin(), frames.end(), 0.0) /
                              static_cast<double>(frames.size());
-    std::printf("| %-28s | %5zu | %8.1f | %8.1f | %8.1f |\n", name,
-                ms.size(), Average(ms), Percentile(ms, 1.0), avg_frames);
+    std::printf("| %-28s | %5zu | %8.1f | %8.1f | %8.1f |\n",
+                name,
+                ms.size(),
+                Average(ms),
+                Percentile(ms, 1.0),
+                avg_frames);
   }
 };
 
@@ -106,9 +115,10 @@ class Bench {
   auto Frame(std::vector<InputEvent> events = {}) -> std::pair<double, double> {
     time_ += 1.0 / 60.0;
     const auto start = Clock::now();
-    ctx_.BeginFrame({static_cast<float>(size_.width),
-                     static_cast<float>(size_.height)},
-                    events, time_);
+    ctx_.BeginFrame(
+        {static_cast<float>(size_.width), static_cast<float>(size_.height)},
+        events,
+        time_);
     gloomy::ui::LayoutSpec root;
     root.padding = gloomy::ui::Padding::All(8);
     root.gap = 8;
@@ -210,8 +220,11 @@ auto main(int argc, char **argv) -> int {
   }
   const auto setup_start = Clock::now();
   Bench bench(**device, rows, size);
-  std::printf("gloomy_bench: %d rows, %ux%u, %s, setup %.0f ms\n\n", rows,
-              size.width, size.height, (*device)->device_name().c_str(),
+  std::printf("gloomy_bench: %d rows, %ux%u, %s, setup %.0f ms\n\n",
+              rows,
+              size.width,
+              size.height,
+              (*device)->device_name().c_str(),
               Ms(Clock::now() - setup_start));
 
   // Warm up: glyphs, shape cache, pipelines.
@@ -219,10 +232,12 @@ auto main(int argc, char **argv) -> int {
     bench.Frame();
   }
 
-  std::printf("| Scenario                     | Frames | UI avg | UI p95 | "
-              "UI max | GPU avg | GPU p95 |\n");
-  std::printf("|------------------------------|-------:|-------:|-------:|"
-              "-------:|--------:|--------:|\n");
+  std::printf(
+      "| Scenario                     | Frames | UI avg | UI p95 | "
+      "UI max | GPU avg | GPU p95 |\n");
+  std::printf(
+      "|------------------------------|-------:|-------:|-------:|"
+      "-------:|--------:|--------:|\n");
 
   Samples idle;
   for (int i = 0; i < 120; ++i) {
@@ -252,8 +267,8 @@ auto main(int argc, char **argv) -> int {
 
   Samples jump;
   for (int i = 0; i < 100; ++i) {
-    auto [ui, gpu] = bench.Frame(
-        {InputEvent::KeyDown(i % 2 == 0 ? Key::kEnd : Key::kHome)});
+    auto [ui, gpu] =
+        bench.Frame({InputEvent::KeyDown(i % 2 == 0 ? Key::kEnd : Key::kHome)});
     jump.ui.push_back(ui);
     jump.gpu.push_back(gpu);
   }
@@ -286,8 +301,10 @@ auto main(int argc, char **argv) -> int {
   // Sorting by different columns.
   Samples sorting;
   Latency sort_latency;
-  const int columns[] = {gloomy::apps::kPrice, gloomy::apps::kStation,
-                         gloomy::apps::kStock, gloomy::apps::kSector};
+  const int columns[] = {gloomy::apps::kPrice,
+                         gloomy::apps::kStation,
+                         gloomy::apps::kStock,
+                         gloomy::apps::kSector};
   for (const int col : columns) {
     for (const auto dir : {gloomy::data::SortDirection::kAscending,
                            gloomy::data::SortDirection::kDescending}) {
@@ -298,10 +315,9 @@ auto main(int argc, char **argv) -> int {
       sort_latency.frames.push_back(frames);
     }
   }
-  bench.grid().query.sort = {{gloomy::apps::kGood,
-                              gloomy::data::SortDirection::kAscending},
-                             {gloomy::apps::kPrice,
-                              gloomy::data::SortDirection::kDescending}};
+  bench.grid().query.sort = {
+      {gloomy::apps::kGood, gloomy::data::SortDirection::kAscending},
+      {gloomy::apps::kPrice, gloomy::data::SortDirection::kDescending}};
   {
     const auto t0 = Clock::now();
     const int frames = WaitForView(bench, sorting);
@@ -310,10 +326,12 @@ auto main(int argc, char **argv) -> int {
   }
   sorting.Print("Sorting (frames)");
 
-  std::printf("\n| Query latency                | Count | Avg ms   | Max ms "
-              "  | Frames   |\n");
-  std::printf("|------------------------------|------:|---------:|---------:|"
-              "---------:|\n");
+  std::printf(
+      "\n| Query latency                | Count | Avg ms   | Max ms "
+      "  | Frames   |\n");
+  std::printf(
+      "|------------------------------|------:|---------:|---------:|"
+      "---------:|\n");
   type_latency.Print("Search, per keystroke");
   erase_latency.Print("Backspace, per keystroke");
   sort_latency.Print("Sort, per change");

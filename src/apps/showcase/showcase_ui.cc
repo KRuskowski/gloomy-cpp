@@ -335,11 +335,88 @@ void InitShowcase(ShowcaseState &s, int rows) {
 
   s.contract = data::Document::ParseMarkdown(apps::SampleContract(400));
   s.outline = s.contract.Outline();
+
+  ShowcaseState *state = &s;
+  s.commands = std::make_unique<ui::CommandProvider>();
+  s.commands->Add({"Go to markets", "Ctrl+1", [state] {
+                     state->tab = 0;
+                   }});
+  s.commands->Add({"Go to contract", "Ctrl+2", [state] {
+                     state->tab = 1;
+                   }});
+  s.commands->Add({"Search markets", "Ctrl+F", [state] {
+                     state->tab = 0;
+                     state->focus_request = "##market_search";
+                   }});
+  s.commands->Add({"Search the contract", "", [state] {
+                     state->tab = 1;
+                     state->focus_request = "##doc_search";
+                   }});
+  for (std::size_t i = 0; i < s.presets.size(); ++i) {
+    s.commands->Add({"View: " + s.presets[i].name, "", [state, i] {
+                       state->preset_request = static_cast<int>(i);
+                     }});
+  }
+  s.commands->Add({"Theme: dark", "", [state] {
+                     state->theme_request = 0;
+                   }});
+  s.commands->Add({"Theme: light", "", [state] {
+                     state->theme_request = 1;
+                   }});
+  s.commands->Add({"Theme: high contrast", "", [state] {
+                     state->theme_request = 2;
+                   }});
+  s.station_search = std::make_unique<ui::TableProvider>(
+      "Market reports",
+      s.market,
+      apps::kStation,
+      std::vector<int>{apps::kSector, apps::kGood, apps::kPrice},
+      [state](data::RowIndex row) {
+        state->tab = 0;
+        state->preset = 0;
+        state->search.clear();
+        ApplyActivePreset(*state);
+        state->grid.cursor = state->market->RowKey(row);
+        state->grid.reveal = true;
+        state->focus_request = "##market";
+      });
+  s.contract_search = std::make_unique<ui::DocumentProvider>(
+      "Contract AFM-0042", s.contract, [state](const data::DocMatch &m) {
+        state->tab = 1;
+        ui::ScrollToBlock(state->doc, m.block);
+      });
 }
 
 void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
                 ShowcaseState &s) {
   const ui::Theme &t = ctx.theme();
+  // Requests from commands and search hits.
+  if (s.theme_request >= 0) {
+    s.theme = s.theme_request;
+    s.theme_request = -1;
+    ctx.SetTheme(s.theme == 1   ? ui::Theme::Light(info.fonts)
+                 : s.theme == 2 ? ui::Theme::HighContrast(info.fonts)
+                                : ui::Theme::Dark(info.fonts));
+  }
+  if (s.preset_request >= 0) {
+    DrillTo(ctx, s, s.preset_request);
+    s.preset_request = -1;
+  }
+  if (!s.focus_request.empty()) {
+    ctx.SetFocus(s.focus_request == "##market"
+                     ? ctx.GetId("##market")
+                     : ui::SearchFieldId(ctx, s.focus_request));
+    s.focus_request.clear();
+  }
+  // Ctrl+K searches everything, Ctrl+P runs commands.
+  if (ctx.ConsumeKey(ui::Key::kK, ui::kModCtrl)) {
+    s.finder.open = true;
+    s.palette_only = false;
+  }
+  if (ctx.ConsumeKey(ui::Key::kP, ui::kModCtrl)) {
+    s.finder.open = true;
+    s.palette_only = true;
+  }
   // Global keys: Ctrl+F searches the current tab, Ctrl+1/2 switch tabs.
   if (ctx.ConsumeKey(ui::Key::kF, ui::kModCtrl) ||
       ctx.ConsumeKey(ui::Key::kSlash)) {
@@ -375,7 +452,7 @@ void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
   std::snprintf(status,
                 sizeof(status),
                 "UI %.2f ms \xC2\xB7 frame %.1f ms \xC2\xB7 %s \xC2\xB7 "
-                "Tab/Shift+Tab focus, Ctrl+F search, Ctrl+1/2 tabs",
+                "Ctrl+K search everything, Ctrl+P commands, Ctrl+F search here",
                 info.ui_ms,
                 info.frame_ms,
                 info.device_name.c_str());
@@ -384,6 +461,21 @@ void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
   muted.size = t.metrics.small_font_size;
   ui::Label(ctx, status, muted);
   ui::End(ctx);
+
+  if (s.finder.open) {
+    if (s.palette_only) {
+      ui::SearchProvider *providers[] = {s.commands.get()};
+      ui::Finder(ctx, "##finder", providers, s.finder, "Run a command");
+    } else {
+      ui::SearchProvider *providers[] = {
+          s.commands.get(), s.station_search.get(), s.contract_search.get()};
+      ui::Finder(ctx,
+                 "##finder",
+                 providers,
+                 s.finder,
+                 "Search stations, goods, the contract and commands");
+    }
+  }
 
   if (!s.toast.empty() && ctx.time() < s.toast_until) {
     const Vec2 vp = ctx.viewport();

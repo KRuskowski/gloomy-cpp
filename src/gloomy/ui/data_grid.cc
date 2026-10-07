@@ -441,8 +441,7 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
       state.dragging = hit.col;
     } else if (hit.kind == Hit::Kind::kCell) {
       const std::uint8_t mods = ctx.press_mods();
-      const std::int64_t anchor_pos =
-          state.anchor ? state.anchor_pos : -1;
+      const std::int64_t anchor_pos = state.anchor ? state.anchor_pos : -1;
       SetCursor(view, state, hit.pos);
       for (std::size_t v = 0; v < visible.size(); ++v) {
         if (visible[v] == hit.col) {
@@ -1154,6 +1153,18 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
 
   if (HandlePointer(ctx, view, state, it, g, visible, id, menu_id, result)) {
     reveal_cursor = true;
+  }
+  if (state.reveal && !view.busy() && view.view().query == state.query) {
+    // The view is current: the cursor's position is final.
+    state.cursor_generation = ~0ULL;
+    SyncCursor(view, state);
+    reveal_cursor = state.cursor_pos >= 0;
+    state.reveal = false;
+    if (state.cursor) {
+      state.selection.Clear();
+      state.selection.Set(*state.cursor, true);
+      SetAnchor(state);
+    }
   }
   const Vec2 mouse = ctx.mouse();
 

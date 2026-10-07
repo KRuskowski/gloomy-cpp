@@ -33,6 +33,7 @@ add_library(GlCore OBJECT
 add_library(GlData OBJECT
   src/gloomy/data/columnar_table.cc
   src/gloomy/data/document.cc
+  src/gloomy/data/fuzzy.cc
   src/gloomy/data/query.cc
   src/gloomy/data/search.cc
   src/gloomy/data/table_source.cc
@@ -59,6 +60,7 @@ add_library(GlUi OBJECT
   src/gloomy/ui/context.cc
   src/gloomy/ui/data_grid.cc
   src/gloomy/ui/document_view.cc
+  src/gloomy/ui/finder.cc
   src/gloomy/ui/layout.cc
   src/gloomy/ui/summary.cc
   src/gloomy/ui/theme.cc

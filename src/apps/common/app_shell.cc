@@ -45,12 +45,28 @@ auto Headless(const ShellOptions &options) -> int {
   ui::Context ui(text_system, ui::Theme::Dark(info.fonts));
   const Vec2 viewport{static_cast<float>(options.size.width),
                       static_cast<float>(options.size.height)};
-  for (int frame = 0; frame < options.screenshot_frames; ++frame) {
+  int frame = 0;
+  auto run_frame = [&] {
     const auto start = Clock::now();
     ui.BeginFrame(viewport, {}, 1.0 + frame / 60.0);
     options.frame(ui, info);
     ui.EndFrame();
     info.ui_ms = Ms(Clock::now() - start);
+    ++frame;
+  };
+  for (int i = 0; i < options.screenshot_frames; ++i) {
+    run_frame();
+  }
+  if (options.settled) {
+    const auto deadline = Clock::now() + std::chrono::seconds(5);
+    while (!options.settled() && Clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      run_frame();
+    }
+    // A few more so results that arrived are laid out.
+    for (int i = 0; i < 3; ++i) {
+      run_frame();
+    }
   }
   gfx::UiRenderer renderer(**ctx, gfx::OffscreenTarget::kFormat, atlas);
   gfx::OffscreenTarget target(**ctx, options.size);

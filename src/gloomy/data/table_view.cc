@@ -182,7 +182,10 @@ auto TableView::Update(double time) -> bool {
       pending_ = true;
     }
   }
-  if (!dirty_ && current_->version != source_->Version() &&
+  // A data change re-queries, throttled, and never cancels a job in
+  // flight (that job would never finish while data keeps changing); its
+  // result is followed by another refresh if the data moved on.
+  if (!dirty_ && !pending_ && current_->version != source_->Version() &&
       time - last_refresh_ >= refresh_seconds_) {
     dirty_ = true;
   }

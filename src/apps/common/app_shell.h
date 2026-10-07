@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <string>
+#include <thread>
 
 #include "gloomy/text/font_set.h"
 #include "gloomy/ui/context.h"
@@ -30,6 +31,9 @@ struct ShellOptions {
   /// Frames run before the screenshot is taken.
   int screenshot_frames = 4;
   bool validation = true;
+  /// Headless only: frames continue (a few ms apart, up to 5 s) until this
+  /// returns true, so background queries finish before the screenshot.
+  std::function<bool()> settled;
   /// Declares the UI for one frame.
   std::function<void(ui::Context &, const FrameInfo &)> frame;
 };

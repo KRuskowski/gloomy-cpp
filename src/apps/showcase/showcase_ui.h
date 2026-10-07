@@ -10,6 +10,7 @@
 #include "gloomy/data/table_view.h"
 #include "gloomy/ui/data_grid.h"
 #include "gloomy/ui/document_view.h"
+#include "gloomy/ui/finder.h"
 #include "gloomy/ui/view_preset.h"
 #include "gloomy/ui/widgets.h"
 #include "sample_data.h"
@@ -39,6 +40,16 @@ struct ShowcaseState {
   std::int64_t shortages = 0;
   std::string toast;
   double toast_until = 0.0;
+  // Global search (Ctrl+K) and the command palette (Ctrl+P).
+  ui::FinderState finder;
+  bool palette_only = false;
+  std::unique_ptr<ui::CommandProvider> commands;
+  std::unique_ptr<ui::TableProvider> station_search;
+  std::unique_ptr<ui::DocumentProvider> contract_search;
+  // Work requested by commands, done in the next frame.
+  std::string focus_request;
+  int theme_request = -1;
+  int preset_request = -1;
 };
 
 /// Builds the sample data, presets and views.

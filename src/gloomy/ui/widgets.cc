@@ -388,6 +388,9 @@ struct TextEditState {
   float scroll_x = 0.0F;
   double last_change = 0.0;
   bool dragging = false;
+  // Hash of the text as the field last left it, to notice edits by the
+  // app (the caret then moves to the end).
+  std::uint64_t known = 0;
 };
 
 }  // namespace
@@ -402,6 +405,9 @@ auto TextField(Context &ctx, std::string_view label, std::string &text,
   const text::FontId font = opt.mono ? t.fonts.mono : t.fonts.sans;
   const float size = t.metrics.font_size;
   const float pad = t.metrics.padding_x;
+  if (HashString(text) != st.known) {
+    st.cursor = st.anchor = text.size();
+  }
   st.cursor = std::min(st.cursor, text.size());
   st.anchor = std::min(st.anchor, text.size());
 
@@ -529,6 +535,7 @@ auto TextField(Context &ctx, std::string_view label, std::string &text,
   if (result.changed) {
     st.last_change = ctx.time();
   }
+  st.known = HashString(text);
 
   // Keep the caret visible.
   const text::ShapedText &shaped = ctx.text().Shape(text, font, size);

@@ -89,6 +89,9 @@ struct GridState {
   /// Vertical scroll in pixels (double: a million rows are 24 million px).
   double scroll_y = 0.0;
   float scroll_x = 0.0F;
+  /// Set to scroll the cursor row into view once the view shows it (after
+  /// setting `cursor` from outside, e.g. a search hit).
+  bool reveal = false;
 
   // Internal: cursor position cache, interaction, type-to-jump.
   std::int64_t cursor_pos = -1;

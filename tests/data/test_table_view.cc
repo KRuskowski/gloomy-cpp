@@ -2,8 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "gloomy/data/columnar_table.h"
 
@@ -104,6 +106,25 @@ TEST(TableViewTest, RefreshesWhenTheSourceChanges) {
   EXPECT_FALSE(view.Update(0.1)) << "throttled";
   EXPECT_TRUE(view.Update(0.3));
   EXPECT_EQ(view.rows().size(), 11U);
+}
+
+TEST(TableViewTest, SlowQueriesAreNotRestartedByRefreshes) {
+  auto t = MakeTable(300000);
+  TableView view(t);
+  view.SetRefreshInterval(0.0);
+  Query q;
+  q.sort = {{0, SortDirection::kDescending}};
+  view.SetQuery(q);
+  // Frames far apart in simulated time, close in real time: every frame
+  // is past the refresh interval.
+  double time = 0.0;
+  for (int i = 0; i < 20000 && (view.busy() || view.rows().empty()); ++i) {
+    time += 1.0;
+    view.Update(time);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  EXPECT_FALSE(view.busy());
+  EXPECT_EQ(view.rows().size(), 300000U);
 }
 
 TEST(TableViewTest, PositionOfKey) {

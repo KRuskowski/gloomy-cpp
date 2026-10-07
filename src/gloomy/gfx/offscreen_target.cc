@@ -47,12 +47,15 @@ void OffscreenTarget::End(VkCommandBuffer cmd, bool readback) {
   vkCmdEndRendering(cmd);
   if (!readback) {
     // Leave the image in a layout the next Begin() accepts.
-    ImageBarrier(cmd, image_.handle(), 1,
+    ImageBarrier(cmd,
+                 image_.handle(),
+                 1,
                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                  VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                 VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_NONE);
+                 VK_PIPELINE_STAGE_2_COPY_BIT,
+                 VK_ACCESS_2_NONE);
     return;
   }
   ImageBarrier(cmd,
