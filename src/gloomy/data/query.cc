@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <numeric>
 
+#include "gloomy/core/id.h"
 #include "gloomy/core/parallel.h"
 #include "gloomy/core/utf8.h"
 
@@ -120,7 +122,8 @@ auto Compare(const KeyColumn &k, std::uint32_t a, std::uint32_t b) -> int {
 }  // namespace
 
 auto IsNarrowing(const Query &prev, const Query &next) -> bool {
-  if (prev.sort != next.sort || prev.search_columns != next.search_columns) {
+  if (prev.sort != next.sort || prev.search_columns != next.search_columns ||
+      prev.group_by != next.group_by) {
     return false;
   }
   for (const Filter &f : prev.filters) {
@@ -130,6 +133,130 @@ auto IsNarrowing(const Query &prev, const Query &next) -> bool {
     }
   }
   return TermsNarrow(ParseTerms(prev.search), ParseTerms(next.search));
+}
+
+auto EffectiveSort(const Query &query) -> std::vector<SortKey> {
+  std::vector<SortKey> keys;
+  for (const int col : query.group_by) {
+    SortKey key{col, SortDirection::kAscending};
+    for (const SortKey &k : query.sort) {
+      if (k.column == col) {
+        key.direction = k.direction;
+      }
+    }
+    keys.push_back(key);
+  }
+  for (const SortKey &k : query.sort) {
+    const bool grouped =
+        std::find(query.group_by.begin(), query.group_by.end(), k.column) !=
+        query.group_by.end();
+    if (!grouped) {
+      keys.push_back(k);
+    }
+  }
+  return keys;
+}
+
+namespace {
+
+void Summarise(const TableSource &source, const Query &query,
+               const std::vector<RowIndex> &rows, RowGroup &group) {
+  group.values.clear();
+  for (const Aggregate &a : query.aggregates) {
+    double sum = 0.0;
+    double lo = std::numeric_limits<double>::infinity();
+    double hi = -std::numeric_limits<double>::infinity();
+    std::uint32_t n = 0;
+    for (std::uint32_t i = group.first; i < group.first + group.count; ++i) {
+      const double v = source.GetDouble(a.column, rows[i]);
+      if (std::isnan(v)) {
+        continue;
+      }
+      sum += v;
+      lo = std::min(lo, v);
+      hi = std::max(hi, v);
+      ++n;
+    }
+    double value = std::numeric_limits<double>::quiet_NaN();
+    switch (a.op) {
+      case AggregateOp::kCount:
+        value = group.count;
+        break;
+      case AggregateOp::kSum:
+        value = n > 0 ? sum : value;
+        break;
+      case AggregateOp::kMin:
+        value = n > 0 ? lo : value;
+        break;
+      case AggregateOp::kMax:
+        value = n > 0 ? hi : value;
+        break;
+      case AggregateOp::kMean:
+        value = n > 0 ? sum / n : value;
+        break;
+    }
+    group.values.push_back(value);
+  }
+}
+
+auto GroupLevel(const TableSource &source, const Query &query, RowView &view,
+                std::size_t level, std::uint32_t begin, std::uint32_t end,
+                std::int32_t parent, std::uint64_t path,
+                const std::atomic<bool> *cancel) -> bool {
+  const int col = query.group_by[level];
+  std::string key;
+  std::string next;
+  std::uint32_t i = begin;
+  while (i < end) {
+    if (Cancelled(cancel)) {
+      return false;
+    }
+    source.FormatCell(view.rows[i], col, key);
+    std::uint32_t j = i + 1;
+    while (j < end) {
+      source.FormatCell(view.rows[j], col, next);
+      if (next != key) {
+        break;
+      }
+      ++j;
+    }
+    RowGroup group;
+    group.first = i;
+    group.count = j - i;
+    group.level = static_cast<std::uint16_t>(level);
+    group.parent = parent;
+    group.id = HashString(key, path);
+    group.key = key;
+    Summarise(source, query, view.rows, group);
+    const auto index = static_cast<std::int32_t>(view.groups.size());
+    const std::uint64_t id = group.id;
+    view.groups.push_back(std::move(group));
+    if (level + 1 < query.group_by.size() &&
+        !GroupLevel(source, query, view, level + 1, i, j, index, id, cancel)) {
+      return false;
+    }
+    i = j;
+  }
+  return true;
+}
+
+}  // namespace
+
+auto BuildGroups(const TableSource &source, const Query &query, RowView &view,
+                 const std::atomic<bool> *cancel) -> bool {
+  view.groups.clear();
+  if (query.group_by.empty()) {
+    return true;
+  }
+  return GroupLevel(source,
+                    query,
+                    view,
+                    0,
+                    0,
+                    static_cast<std::uint32_t>(view.rows.size()),
+                    -1,
+                    0x67726F7570ULL,
+                    cancel);
 }
 
 auto SameSelection(const Query &prev, const Query &next) -> bool {
@@ -272,7 +399,8 @@ auto Execute(const TableSource &source, const Query &query, const RowView *prev,
   if (same_data && SameSelection(prev->query, query)) {
     result.rows = prev->rows;
     result.path = RowView::Path::kResorted;
-    if (!SortRows(source, query.sort, result.rows, cancel)) {
+    if (!SortRows(source, EffectiveSort(query), result.rows, cancel) ||
+        !BuildGroups(source, query, result, cancel)) {
       return std::nullopt;
     }
     return result;
@@ -320,7 +448,10 @@ auto Execute(const TableSource &source, const Query &query, const RowView *prev,
     }
   }
 
-  if (!sorted && !SortRows(source, query.sort, result.rows, cancel)) {
+  if (!sorted && !SortRows(source, EffectiveSort(query), result.rows, cancel)) {
+    return std::nullopt;
+  }
+  if (!BuildGroups(source, query, result, cancel)) {
     return std::nullopt;
   }
   return result;

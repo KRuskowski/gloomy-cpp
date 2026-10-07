@@ -32,6 +32,7 @@ add_library(GlCore OBJECT
 
 add_library(GlData OBJECT
   src/gloomy/data/columnar_table.cc
+  src/gloomy/data/display_rows.cc
   src/gloomy/data/document.cc
   src/gloomy/data/fuzzy.cc
   src/gloomy/data/query.cc

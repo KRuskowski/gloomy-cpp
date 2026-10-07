@@ -65,5 +65,38 @@ TEST_F(DataGridImageTest, MarketGrid) {
   testing::ExpectMatchesReference(Render(h, {720, 300}), "data_grid");
 }
 
+TEST_F(DataGridImageTest, GroupedGrid) {
+  testing::UiHarness h({720, 330});
+  auto table = std::make_shared<testing::MarketTable>(400);
+  data::TableView view(table);
+  GridState state;
+  state.columns = DefaultColumns(*table);
+  state.columns[0].width = 150;
+  state.columns[1].visible = false;
+  state.columns[6].visible = false;
+  state.query.group_by = {1, 2};
+  state.query.sort = {{4, data::SortDirection::kDescending}};
+  state.query.aggregates = {{4, data::AggregateOp::kMean},
+                            {5, data::AggregateOp::kSum}};
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##market", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  // Collapse the second sector group ("Cloudbase" after "Argon Prime").
+  state.collapsed.insert(view.view().groups[6].id);
+  state.display_dirty = true;
+  h.ctx().SetFocus(h.ctx().GetId("##market"));
+  h.Frame(ui, testing::UiHarness::Key(Key::kDown));
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {720, 330}), "data_grid_grouped");
+}
+
 }  // namespace
 }  // namespace gloomy::ui

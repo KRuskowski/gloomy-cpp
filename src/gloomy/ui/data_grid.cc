@@ -182,19 +182,75 @@ auto BadgeColor(const Palette &p, std::int64_t v) -> Color {
   return colors[static_cast<std::size_t>(std::abs(v)) % 6].WithAlpha(0.28F);
 }
 
-// Fixes up the cached cursor position after the view changed.
-void SyncCursor(const data::TableView &view, GridState &state) {
-  if (state.cursor_generation == view.generation()) {
+// Rebuilds the display lines when the view or the collapsed set changed.
+void SyncDisplay(const data::TableView &view, GridState &state) {
+  if (state.display_generation == view.generation() && !state.display_dirty) {
     return;
   }
-  state.cursor_generation = view.generation();
+  state.display.Build(view.view(), state.collapsed);
+  state.display_generation = view.generation();
+  state.display_dirty = false;
+  ++state.display_version;
+}
+
+auto LineCount(const GridState &state) -> std::int64_t {
+  return static_cast<std::int64_t>(state.display.size());
+}
+
+// The source row shown on display line `line`, or nothing for a group
+// header.
+auto LineRow(const data::TableView &view, const GridState &state,
+             std::int64_t line) -> std::optional<RowIndex> {
+  const data::DisplayRows::Line l =
+      state.display.At(static_cast<std::size_t>(line));
+  if (l.group >= 0) {
+    return std::nullopt;
+  }
+  return view.rows()[l.pos];
+}
+
+// Cursor key of a line: the RowKey, or the group id with kGroupKeyBit.
+auto LineKey(const data::TableView &view, const GridState &state,
+             std::int64_t line) -> std::uint64_t {
+  const data::DisplayRows::Line l =
+      state.display.At(static_cast<std::size_t>(line));
+  if (l.group >= 0) {
+    return view.view().groups[static_cast<std::size_t>(l.group)].id |
+           kGroupKeyBit;
+  }
+  return view.source().RowKey(view.rows()[l.pos]);
+}
+
+// Display line of a cursor key, -1 if not shown.
+auto LineOfKey(const data::TableView &view, const GridState &state,
+               std::uint64_t key) -> std::int64_t {
+  if ((key & kGroupKeyBit) != 0) {
+    const auto &groups = view.view().groups;
+    for (std::size_t g = 0; g < groups.size(); ++g) {
+      if ((groups[g].id | kGroupKeyBit) == key) {
+        return state.display.LineOfGroup(static_cast<std::int32_t>(g));
+      }
+    }
+    return -1;
+  }
+  const std::int64_t pos = view.PositionOfKey(key);
+  return pos < 0 ? -1
+                 : state.display.LineOfPos(static_cast<std::uint32_t>(pos));
+}
+
+// Fixes up the cached cursor position after the lines changed.
+void SyncCursor(const data::TableView &view, GridState &state) {
+  if (state.cursor_generation == state.display_version) {
+    return;
+  }
+  state.cursor_generation = state.display_version;
   state.cursor_pos =
-      state.cursor ? view.PositionOfKey(*state.cursor) : std::int64_t{-1};
+      state.cursor ? LineOfKey(view, state, *state.cursor) : std::int64_t{-1};
   if (state.anchor == state.cursor) {
     state.anchor_pos = state.cursor_pos;
   } else {
     state.anchor_pos =
-        state.anchor ? view.PositionOfKey(*state.anchor) : std::int64_t{-1};
+        state.anchor ? LineOfKey(view, state, *state.anchor) : std::int64_t{-1};
   }
 }
 
@@ -205,32 +261,55 @@ void SetAnchor(GridState &state) {
 }
 
 void SetCursor(const data::TableView &view, GridState &state,
-               std::int64_t pos) {
-  const auto rows = view.rows();
-  if (rows.empty()) {
+               std::int64_t line) {
+  const std::int64_t n = LineCount(state);
+  if (n == 0) {
     state.cursor.reset();
     state.cursor_pos = -1;
     return;
   }
-  pos = std::clamp<std::int64_t>(
-      pos, 0, static_cast<std::int64_t>(rows.size()) - 1);
-  state.cursor_pos = pos;
-  state.cursor = view.source().RowKey(rows[static_cast<std::size_t>(pos)]);
+  line = std::clamp<std::int64_t>(line, 0, n - 1);
+  state.cursor_pos = line;
+  state.cursor = LineKey(view, state, line);
 }
 
+auto CursorOnData(const GridState &state) -> bool {
+  return state.cursor && (*state.cursor & kGroupKeyBit) == 0;
+}
+
+// Selects the data rows on lines a..b.
 void SelectRange(const data::TableView &view, GridState &state, std::int64_t a,
                  std::int64_t b) {
-  const auto rows = view.rows();
   state.selection.Clear();
   if (a > b) {
     std::swap(a, b);
   }
-  for (std::int64_t p = std::max<std::int64_t>(0, a);
-       p <= b && p < static_cast<std::int64_t>(rows.size());
-       ++p) {
-    state.selection.Set(view.source().RowKey(rows[static_cast<std::size_t>(p)]),
-                        true);
+  for (std::int64_t line = std::max<std::int64_t>(0, a);
+       line <= b && line < LineCount(state);
+       ++line) {
+    if (const auto row = LineRow(view, state, line)) {
+      state.selection.Set(view.source().RowKey(*row), true);
+    }
   }
+}
+
+// Collapses (or expands) the group on `line`; toggles without `collapse`.
+void ToggleGroup(const data::TableView &view, GridState &state,
+                 std::int64_t line, std::optional<bool> collapse = {}) {
+  const data::DisplayRows::Line l =
+      state.display.At(static_cast<std::size_t>(line));
+  if (l.group < 0) {
+    return;
+  }
+  const std::uint64_t id =
+      view.view().groups[static_cast<std::size_t>(l.group)].id;
+  const bool now = collapse.value_or(!state.collapsed.contains(id));
+  if (now) {
+    state.collapsed.insert(id);
+  } else {
+    state.collapsed.erase(id);
+  }
+  state.display_dirty = true;
 }
 
 // Width needed for the header and the visible rows of column `index`.
@@ -244,11 +323,12 @@ auto AutoWidth(Context &ctx, const data::TableView &view,
                 info.title, t.fonts.bold, t.metrics.small_font_size + 1) +
             3 * kCellPad + 14;
   std::string cell;
-  const auto rows = view.rows();
-  for (std::int64_t p = first;
-       p < first + count && p < static_cast<std::int64_t>(rows.size());
-       ++p) {
-    view.source().FormatCell(rows[static_cast<std::size_t>(p)], c.column, cell);
+  for (std::int64_t p = first; p < first + count && p < LineCount(state); ++p) {
+    const auto row = LineRow(view, state, p);
+    if (!row) {
+      continue;
+    }
+    view.source().FormatCell(*row, c.column, cell);
     w = std::max(w,
                  ctx.text().Measure(cell, t.fonts.sans, t.metrics.font_size) +
                      2 * kCellPad + 2);
@@ -261,14 +341,15 @@ auto FindPrefix(const data::TableView &view, const GridState &state,
                 int source_col, std::string_view prefix, std::int64_t from)
     -> std::int64_t {
   const auto rows = view.rows();
-  const auto n = static_cast<std::int64_t>(rows.size());
+  const std::int64_t n = LineCount(state);
   if (n == 0) {
     return -1;
   }
   const data::TableSource &src = view.source();
   const ColumnInfo &info = src.Columns()[source_col];
-  // Sorted ascending by this text column: binary search.
-  if (!state.query.sort.empty() && state.query.sort[0].column == source_col &&
+  // Sorted ascending by this text column (and not grouped): binary search.
+  if (!state.display.grouped() && !state.query.sort.empty() &&
+      state.query.sort[0].column == source_col &&
       state.query.sort[0].direction == SortDirection::kAscending &&
       info.type == ColumnType::kText) {
     const auto it = std::lower_bound(
@@ -284,7 +365,11 @@ auto FindPrefix(const data::TableView &view, const GridState &state,
   std::string cell;
   for (std::int64_t k = 0; k < n; ++k) {
     const std::int64_t p = (from + k) % n;
-    src.FormatCell(rows[static_cast<std::size_t>(p)], source_col, cell);
+    const auto row = LineRow(view, state, p);
+    if (!row) {
+      continue;
+    }
+    src.FormatCell(*row, source_col, cell);
     if (Fold(cell).starts_with(prefix)) {
       return p;
     }
@@ -298,8 +383,7 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
                 const std::vector<int> &visible, int page, GridResult &result)
     -> bool {
   bool reveal_cursor = false;
-  const auto rows = view.rows();
-  const auto n = static_cast<std::int64_t>(rows.size());
+  const std::int64_t n = LineCount(state);
   auto move = [&](std::int64_t pos, std::uint8_t mods) {
     if (n == 0) {
       return;
@@ -318,10 +402,14 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
       }
     } else if ((mods & kModCtrl) == 0) {
       state.selection.Clear();
-      state.selection.Set(*state.cursor, true);
+      if (CursorOnData(state)) {
+        state.selection.Set(*state.cursor, true);
+      }
       SetAnchor(state);
     }
   };
+  const bool on_group =
+      state.cursor && !CursorOnData(state) && state.cursor_pos >= 0;
   const std::int64_t cur = std::max<std::int64_t>(state.cursor_pos, -1);
   std::uint8_t mods = 0;
   while (ctx.ConsumeKeyAnyMods(Key::kDown, mods))
@@ -357,6 +445,13 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
       ++state.cursor_col;
     }
   }
+  // On a group header, Left collapses and Right expands.
+  if (on_group && ctx.ConsumeKey(Key::kLeft)) {
+    ToggleGroup(view, state, state.cursor_pos, true);
+  }
+  if (on_group && ctx.ConsumeKey(Key::kRight)) {
+    ToggleGroup(view, state, state.cursor_pos, false);
+  }
   if (ctx.ConsumeKey(Key::kLeft)) {
     state.cursor_col = std::max(0, state.cursor_col - 1);
     reveal_cursor = true;
@@ -376,13 +471,21 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
     state.selection.Clear();
   }
   if (state.cursor && ctx.ConsumeKey(Key::kSpace, kModNone, true)) {
-    state.selection.Set(*state.cursor,
-                        !state.selection.Contains(*state.cursor));
+    if (on_group) {
+      ToggleGroup(view, state, state.cursor_pos);
+    } else {
+      state.selection.Set(*state.cursor,
+                          !state.selection.Contains(*state.cursor));
+    }
   }
   if (ctx.ConsumeKey(Key::kEnter) && state.cursor_pos >= 0 &&
       state.cursor_pos < n) {
-    result.activated = true;
-    result.row = rows[static_cast<std::size_t>(state.cursor_pos)];
+    if (on_group) {
+      ToggleGroup(view, state, state.cursor_pos);
+    } else {
+      result.activated = true;
+      result.row = LineRow(view, state, state.cursor_pos);
+    }
   }
   // Type to jump on the primary sort column, else the cursor column.
   const std::string typed = ctx.TakeText();
@@ -422,8 +525,7 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
                    const std::vector<int> &visible, Id id, Id menu_id,
                    GridResult &result) -> bool {
   bool reveal_cursor = false;
-  const auto rows = view.rows();
-  const auto n = static_cast<std::int64_t>(rows.size());
+  const std::int64_t n = LineCount(state);
   const data::TableSource &src = view.source();
   const double viewport = std::max(0.0F, g.rows.Height());
   const Vec2 mouse = ctx.mouse();
@@ -440,6 +542,10 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
           state.columns[static_cast<std::size_t>(hit.col)].width;
     } else if (hit.kind == Hit::Kind::kHeader) {
       state.dragging = hit.col;
+    } else if (hit.kind == Hit::Kind::kCell && !LineRow(view, state, hit.pos)) {
+      // A group header: the cursor goes there and the group toggles.
+      SetCursor(view, state, hit.pos);
+      ToggleGroup(view, state, hit.pos);
     } else if (hit.kind == Hit::Kind::kCell) {
       const std::uint8_t mods = ctx.press_mods();
       const std::int64_t anchor_pos = state.anchor ? state.anchor_pos : -1;
@@ -527,8 +633,10 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
                     first,
                     static_cast<std::int64_t>(viewport / g.row_h) + 1);
     } else if (hit.kind == Hit::Kind::kCell) {
-      result.activated = true;
-      result.row = rows[static_cast<std::size_t>(hit.pos)];
+      if (const auto row = LineRow(view, state, hit.pos)) {
+        result.activated = true;
+        result.row = row;
+      }
     }
   }
   if (!it.pressed) {
@@ -540,8 +648,10 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
     if (hit.kind == Hit::Kind::kHeader || hit.kind == Hit::Kind::kHeaderEdge) {
       state.menu_column = hit.col;
       ctx.OpenPopup(menu_id);
-    } else if (hit.kind == Hit::Kind::kCell) {
-      const RowIndex r = rows[static_cast<std::size_t>(hit.pos)];
+    } else if (const auto line_row = hit.kind == Hit::Kind::kCell
+                                         ? LineRow(view, state, hit.pos)
+                                         : std::nullopt) {
+      const RowIndex r = *line_row;
       if (!state.selection.Contains(src.RowKey(r))) {
         state.selection.Clear();
         state.selection.Set(src.RowKey(r), true);
@@ -555,6 +665,123 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
   return reveal_cursor;
 }
 
+// Draws a group header line: chevron, key and count in the first column,
+// aggregates under their columns.
+void PaintGroupLine(PaintContext &pc, const Geometry &geo,
+                    const GridState &state, const data::TableView &view,
+                    const data::RowGroup &group, const Rect &row_rect,
+                    const std::vector<data::Aggregate> &aggregates,
+                    bool cursor) {
+  const Theme &th = pc.theme;
+  const Palette &c = th.colors;
+  gfx::DrawList &list = pc.list;
+  const auto infos = view.source().Columns();
+  const float small = th.metrics.small_font_size + 1;
+  list.FillRect(row_rect, Mix(c.surface_raised, c.primary, 0.06F));
+  list.FillRect({row_rect.x0, row_rect.y1 - 1, row_rect.x1, row_rect.y1},
+                c.divider);
+  const bool collapsed = state.collapsed.contains(group.id);
+  const float level = 14.0F * group.level;
+  const float x = geo.body.x0 + kCellPad + level;
+  const float cy = std::round(row_rect.Center().y);
+  // Chevron: right when collapsed, down when open.
+  if (collapsed) {
+    list.Line({x + 3, cy - 4}, {x + 7, cy}, 1.5F, c.text_muted);
+    list.Line({x + 7, cy}, {x + 3, cy + 4}, 1.5F, c.text_muted);
+  } else {
+    list.Line({x + 1, cy - 2}, {x + 5, cy + 2}, 1.5F, c.text_muted);
+    list.Line({x + 5, cy + 2}, {x + 9, cy - 2}, 1.5F, c.text_muted);
+  }
+  std::string label = group.key.empty() ? "(blank)" : group.key;
+  label += "  ";
+  std::string n;
+  data::FormatInt(group.count, true, n);
+  label += "(" + n + ")";
+  // The label may run across columns; aggregates paint over it only where
+  // there is one.
+  float label_right = geo.body.x1 - kCellPad;
+  for (const ColSpan &span : geo.cols) {
+    const GridColumn &col = state.columns[static_cast<std::size_t>(span.index)];
+    for (const data::Aggregate &a : aggregates) {
+      if (a.column == col.column && span.x0 > x + 40) {
+        label_right = std::min(label_right, span.x0);
+      }
+    }
+  }
+  list.PushClip(row_rect);
+  pc.text.DrawFitted(list,
+                     label,
+                     th.fonts.bold,
+                     th.metrics.font_size,
+                     {x + 16, row_rect.y0, label_right - kCellPad, row_rect.y1},
+                     c.text);
+  for (std::size_t i = 0; i < aggregates.size() && i < group.values.size();
+       ++i) {
+    const data::Aggregate &a = aggregates[i];
+    const double v = group.values[i];
+    if (std::isnan(v)) {
+      continue;
+    }
+    for (const ColSpan &span : geo.cols) {
+      const GridColumn &col =
+          state.columns[static_cast<std::size_t>(span.index)];
+      if (col.column != a.column) {
+        continue;
+      }
+      const ColumnInfo &info = infos[col.column];
+      std::string text;
+      switch (a.op) {
+        case data::AggregateOp::kSum:
+          text = "\xCE\xA3 ";
+          break;
+        case data::AggregateOp::kMean:
+          text = "avg ";
+          break;
+        case data::AggregateOp::kMin:
+          text = "min ";
+          break;
+        case data::AggregateOp::kMax:
+          text = "max ";
+          break;
+        case data::AggregateOp::kCount:
+          text = "n ";
+          break;
+      }
+      if (info.type == ColumnType::kDouble ||
+          a.op == data::AggregateOp::kMean) {
+        data::FormatDouble(v, info.decimals, info.group_digits, text);
+      } else {
+        data::FormatInt(static_cast<std::int64_t>(std::llround(v)),
+                        info.group_digits,
+                        text);
+      }
+      if (a.op != data::AggregateOp::kCount) {
+        text += info.unit;
+      }
+      const Rect region = span.pinned ? Rect{geo.body.x0,
+                                             geo.body.y0,
+                                             geo.body.x0 + geo.pinned_w,
+                                             geo.body.y1}
+                                      : geo.ScrollRegion();
+      list.PushClip(
+          Rect{span.x0, row_rect.y0, span.x1, row_rect.y1}.Intersect(region));
+      pc.text.DrawFitted(
+          list,
+          text,
+          th.fonts.bold,
+          small,
+          {span.x0 + kCellPad, row_rect.y0, span.x1 - kCellPad, row_rect.y1},
+          c.text_muted,
+          text::HAlign::kRight);
+      list.PopClip();
+    }
+  }
+  list.PopClip();
+  if (cursor) {
+    list.StrokeRect(row_rect.Inset(0.5F), c.focus, 1.0F);
+  }
+}
+
 // Draws the grid: rows, cells, header, status bar.
 void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
                const GridState &state, bool focused, bool busy) {
@@ -563,8 +790,12 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
   const data::TableSource &s = view.source();
   const auto infos2 = s.Columns();
   const auto rows2 = view.rows();
-  const auto count = static_cast<std::int64_t>(rows2.size());
+  const std::int64_t count = LineCount(state);
   const Geometry geo = MakeGeometry(state, r, th);
+  const auto &groups = view.view().groups;
+  const auto &aggregates = view.view().query.aggregates;
+  const float indent =
+      14.0F * static_cast<float>(view.view().query.group_by.size());
   gfx::DrawList &list = pc.list;
   const float font = th.metrics.font_size;
   const float small = th.metrics.small_font_size + 1;
@@ -589,8 +820,24 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
   data::Explanation scratch;
   for (std::int64_t p = first; p < count && y < geo.rows.y1;
        ++p, y += geo.row_h) {
-    const RowIndex row = rows2[static_cast<std::size_t>(p)];
+    const data::DisplayRows::Line line =
+        state.display.At(static_cast<std::size_t>(p));
     const Rect row_rect{geo.body.x0, y, geo.body.x1, y + geo.row_h};
+    if (line.group >= 0) {
+      const data::RowGroup &group =
+          groups[static_cast<std::size_t>(line.group)];
+      PaintGroupLine(pc,
+                     geo,
+                     state,
+                     view,
+                     group,
+                     row_rect,
+                     aggregates,
+                     focused && state.cursor &&
+                         *state.cursor == (group.id | kGroupKeyBit));
+      continue;
+    }
+    const RowIndex row = rows2[line.pos];
     const std::uint64_t key = s.RowKey(row);
     if (state.selection.Contains(key)) {
       list.FillRect(
@@ -612,8 +859,10 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
       list.PushClip(cell_rect);
       s.FormatCell(row, col.column, cell);
       Color fg = c.text;
+      // Grouped rows indent their first column under the group headers.
+      const float in = span.index == geo.cols.front().index ? indent : 0.0F;
       const Rect text_box{
-          span.x0 + kCellPad, y, span.x1 - kCellPad, y + geo.row_h};
+          span.x0 + kCellPad + in, y, span.x1 - kCellPad, y + geo.row_h};
       switch (col.renderer) {
         case CellRenderer::kBar: {
           const double v = s.GetDouble(col.column, row);
@@ -799,12 +1048,21 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
       {geo.status.x0, geo.status.y0, geo.status.x1, geo.status.y0 + 1},
       c.divider);
   std::string status;
-  data::FormatInt(count, true, status);
-  if (count != static_cast<std::int64_t>(s.RowCount())) {
+  data::FormatInt(static_cast<std::int64_t>(rows2.size()), true, status);
+  if (rows2.size() != s.RowCount()) {
     status += " of ";
     data::FormatInt(s.RowCount(), true, status);
   }
-  status += count == 1 ? " row" : " rows";
+  if (state.display.grouped()) {
+    // Lines include group headers; count data rows and groups instead.
+    status.clear();
+    data::FormatInt(static_cast<std::int64_t>(rows2.size()), true, status);
+    status += rows2.size() == 1 ? " row in " : " rows in ";
+    data::FormatInt(static_cast<std::int64_t>(groups.size()), true, status);
+    status += groups.size() == 1 ? " group" : " groups";
+  } else {
+    status += count == 1 ? " row" : " rows";
+  }
   if (!state.selection.Empty()) {
     status += "  \xC2\xB7  ";
     if (state.selection.all) {
@@ -875,6 +1133,63 @@ void HeaderMenu(Context &ctx, data::TableView &view, GridState &state,
     if (!state.query.sort.empty() && item("Clear sort")) {
       state.query.sort.clear();
       close = true;
+    }
+    Separator(ctx);
+    // Grouping and group totals.
+    auto &group_by = state.query.group_by;
+    const bool grouped_here =
+        std::find(group_by.begin(), group_by.end(), col.column) !=
+        group_by.end();
+    if (!grouped_here && item("Group by this column")) {
+      group_by.push_back(col.column);
+      close = true;
+    }
+    if (grouped_here && item("Ungroup this column")) {
+      std::erase(group_by, col.column);
+      close = true;
+    }
+    if (!group_by.empty() && item("Remove all grouping")) {
+      group_by.clear();
+      state.collapsed.clear();
+      close = true;
+    }
+    if (!group_by.empty() && info.IsNumeric()) {
+      static const std::vector<std::string> kTotals{
+          "No total", "Sum", "Average", "Minimum", "Maximum"};
+      static const data::AggregateOp kOps[] = {data::AggregateOp::kSum,
+                                               data::AggregateOp::kSum,
+                                               data::AggregateOp::kMean,
+                                               data::AggregateOp::kMin,
+                                               data::AggregateOp::kMax};
+      auto &aggs = state.query.aggregates;
+      auto found =
+          std::find_if(aggs.begin(), aggs.end(), [&](const data::Aggregate &a) {
+            return a.column == col.column;
+          });
+      int choice = 0;
+      if (found != aggs.end()) {
+        for (int k = 1; k < 5; ++k) {
+          if (kOps[k] == found->op) {
+            choice = k;
+          }
+        }
+      }
+      LayoutSpec totals_row;
+      totals_row.gap = 6;
+      totals_row.align = Align::kCenter;
+      BeginRow(ctx, totals_row);
+      LabelOptions totals_label;
+      totals_label.muted = true;
+      Label(ctx, "Group total", totals_label);
+      if (Dropdown(ctx, "##total", choice, kTotals)) {
+        std::erase_if(aggs, [&](const data::Aggregate &a) {
+          return a.column == col.column;
+        });
+        if (choice > 0) {
+          aggs.push_back({col.column, kOps[choice]});
+        }
+      }
+      End(ctx);
     }
     Separator(ctx);
     // Filter editor for this column.
@@ -1123,10 +1438,10 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
     view.SetQuery(state.query);
   }
   view.Update(ctx.time());
+  SyncDisplay(view, state);
   SyncCursor(view, state);
 
-  const auto rows = view.rows();
-  const auto n = static_cast<std::int64_t>(rows.size());
+  const std::int64_t n = LineCount(state);
   const data::TableSource &src = view.source();
   const auto infos = src.Columns();
   const Interaction it = ctx.Interact(id);
@@ -1165,10 +1480,15 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
     state.reveal = false;
     if (state.cursor) {
       state.selection.Clear();
-      state.selection.Set(*state.cursor, true);
+      if (CursorOnData(state)) {
+        state.selection.Set(*state.cursor, true);
+      }
       SetAnchor(state);
     }
   }
+  // Expanding or collapsing groups changed the lines.
+  SyncDisplay(view, state);
+  SyncCursor(view, state);
   const Vec2 mouse = ctx.mouse();
 
   // Scrolling.
@@ -1179,7 +1499,7 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
     state.scroll_y -= wheel.y * g.row_h * 3.0;
     state.scroll_x -= wheel.x * 40.0F;
   }
-  const double content_h = static_cast<double>(n) * g.row_h;
+  const double content_h = static_cast<double>(LineCount(state)) * g.row_h;
   if (reveal_cursor && state.cursor_pos >= 0) {
     const double top = static_cast<double>(state.cursor_pos) * g.row_h;
     if (top < state.scroll_y) {
@@ -1223,9 +1543,10 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
       }
       const GridColumn &c = state.columns[static_cast<std::size_t>(hit.col)];
       data::Explanation e;
-      if (infos[c.column].explained &&
+      const auto row = LineRow(view, state, hit.pos);
+      if (row && infos[c.column].explained &&
           ctx.time() - state.hover_since >= kHoverDelay &&
-          src.Explain(rows[static_cast<std::size_t>(hit.pos)], c.column, e)) {
+          src.Explain(*row, c.column, e)) {
         tooltip = std::move(e);
       }
     } else {

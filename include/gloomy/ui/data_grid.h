@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "gloomy/data/display_rows.h"
 #include "gloomy/data/query.h"
 #include "gloomy/data/table_source.h"
 #include "gloomy/data/table_view.h"
@@ -76,6 +77,9 @@ struct GridSelection {
   auto Empty() const -> bool { return !all && keys.empty(); }
 };
 
+/// Cursor keys of group header lines carry this bit (RowKeys should not).
+inline constexpr std::uint64_t kGroupKeyBit = 1ULL << 63U;
+
 /// Everything about a grid the app may keep, save and restore; the query
 /// and columns are what a view preset stores (docs/design.md section 2.4).
 struct GridState {
@@ -92,8 +96,15 @@ struct GridState {
   /// Set to scroll the cursor row into view once the view shows it (after
   /// setting `cursor` from outside, e.g. a search hit).
   bool reveal = false;
+  /// Ids (RowGroup::id) of collapsed groups.
+  std::unordered_set<std::uint64_t> collapsed;
 
-  // Internal: cursor position cache, interaction, type-to-jump.
+  // Internal: display lines, cursor position cache, interaction,
+  // type-to-jump. Positions are display lines (group headers included).
+  data::DisplayRows display;
+  std::uint64_t display_generation = ~0ULL;
+  std::uint64_t display_version = 0;
+  bool display_dirty = true;
   std::int64_t cursor_pos = -1;
   std::int64_t anchor_pos = -1;
   std::uint64_t cursor_generation = ~0ULL;

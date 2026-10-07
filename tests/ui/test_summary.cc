@@ -94,6 +94,9 @@ TEST(ViewPresetTest, EncodeDecodeRoundTrip) {
       {.column = 4, .op = data::FilterOp::kLess, .a = 20},
       {.column = 3, .op = data::FilterOp::kInSet, .set = {0, 2}}};
   p.query.search = "\"ore belt\"";
+  p.query.group_by = {1, 2};
+  p.query.aggregates = {{4, data::AggregateOp::kMean},
+                        {5, data::AggregateOp::kSum}};
   p.columns = {{.column = 0, .width = 110, .pinned = true},
                {.column = 4, .width = 90},
                {.column = 1, .width = 80, .visible = false}};

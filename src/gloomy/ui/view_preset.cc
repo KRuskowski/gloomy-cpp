@@ -179,6 +179,27 @@ auto EncodePreset(const ViewPreset &p, const data::TableSource &source)
   if (!p.query.search.empty()) {
     out += ";q=" + Escape(p.query.search);
   }
+  if (!p.query.group_by.empty()) {
+    out += ";g=";
+    for (std::size_t i = 0; i < p.query.group_by.size(); ++i) {
+      if (i > 0) {
+        out += ',';
+      }
+      out += name_of(p.query.group_by[i]);
+    }
+  }
+  if (!p.query.aggregates.empty()) {
+    static constexpr const char *kAggNames[] = {
+        "count", "sum", "min", "max", "mean"};
+    out += ";a=";
+    for (std::size_t i = 0; i < p.query.aggregates.size(); ++i) {
+      if (i > 0) {
+        out += ',';
+      }
+      out += name_of(p.query.aggregates[i].column) + ":" +
+             kAggNames[static_cast<int>(p.query.aggregates[i].op)];
+    }
+  }
   if (!p.columns.empty()) {
     out += ";c=";
     for (std::size_t i = 0; i < p.columns.size(); ++i) {
@@ -218,6 +239,29 @@ auto DecodePreset(std::string_view text, const data::TableSource &source)
       p.description = Unescape(value);
     } else if (key == 'q') {
       p.query.search = Unescape(value);
+    } else if (key == 'g') {
+      for (std::string_view g : Split(value, ',')) {
+        const int col = column(g);
+        if (col >= 0) {
+          p.query.group_by.push_back(col);
+        }
+      }
+    } else if (key == 'a') {
+      static constexpr std::string_view kAggNames[] = {
+          "count", "sum", "min", "max", "mean"};
+      for (std::string_view a : Split(value, ',')) {
+        const auto f = Split(a, ':');
+        const int col = column(f[0]);
+        if (col < 0 || f.size() != 2) {
+          continue;
+        }
+        for (int op = 0; op < 5; ++op) {
+          if (kAggNames[op] == f[1]) {
+            p.query.aggregates.push_back(
+                {col, static_cast<data::AggregateOp>(op)});
+          }
+        }
+      }
     } else if (key == 's') {
       for (std::string_view k : Split(value, ',')) {
         const auto f = Split(k, ':');

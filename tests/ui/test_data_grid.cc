@@ -240,6 +240,60 @@ TEST_F(DataGridTest, QuickSearchFiltersThroughTheView) {
   EXPECT_EQ(view_.terms().size(), 1U);
 }
 
+TEST_F(DataGridTest, GroupsCollapseAndExpand) {
+  state_.query.group_by = {1};
+  state_.query.aggregates = {{5, data::AggregateOp::kSum}};
+  Frame();
+  Frame();
+  // 5 sectors, 200 rows each: 5 headers + 1000 rows.
+  EXPECT_EQ(state_.display.size(), 1005U);
+  EXPECT_EQ(view_.view().groups.size(), 5U);
+  // Click the first group header: it collapses.
+  Frame(UiHarness::Click(RowPoint(0)));
+  Frame();
+  EXPECT_EQ(state_.display.size(), 805U);
+  EXPECT_EQ(state_.collapsed.size(), 1U);
+  // Keyboard: the cursor is on the header; Right expands, Left collapses.
+  Frame(UiHarness::Key(Key::kRight));
+  Frame();
+  EXPECT_EQ(state_.display.size(), 1005U);
+  Frame(UiHarness::Key(Key::kLeft));
+  Frame();
+  EXPECT_EQ(state_.display.size(), 805U);
+  // Down moves to the next group header (the first is collapsed).
+  Frame(UiHarness::Key(Key::kDown));
+  EXPECT_EQ(state_.cursor_pos, 1);
+  EXPECT_TRUE(*state_.cursor & kGroupKeyBit);
+  // The second group is open: Down lands on its first data row.
+  Frame(UiHarness::Key(Key::kDown));
+  EXPECT_FALSE(*state_.cursor & kGroupKeyBit);
+  Frame(UiHarness::Key(Key::kEnter));
+  EXPECT_TRUE(result_.activated);
+  // Collapsed groups stay collapsed when the query changes.
+  state_.query.sort = {{4, data::SortDirection::kAscending}};
+  Frame();
+  Frame();
+  EXPECT_EQ(state_.display.size(), 805U);
+}
+
+TEST_F(DataGridTest, GroupByFromTheHeaderMenu) {
+  Frame();
+  const Vec2 p = HeaderPoint(2);
+  Frame({InputEvent::Move(p.x, p.y),
+         InputEvent::Down(p.x, p.y, PointerButton::kRight),
+         InputEvent::Up(p.x, p.y, PointerButton::kRight)});
+  Frame();
+  Id item = kNoId;
+  h_.Frame([&](Context &ctx) {
+    result_ = DataGrid(ctx, "##market", view_, state_);
+    ctx.PushId(HashCombine(ctx.GetId("##market"), 0x6D656E75ULL));
+    item = ctx.GetId("Group by this column");
+    ctx.PopId();
+  });
+  Frame(UiHarness::Click(h_.Center(item)));
+  EXPECT_EQ(state_.query.group_by, (std::vector<int>{2}));
+}
+
 class DataGridMillionTest : public DataGridTest {
  protected:
   DataGridMillionTest() : DataGridTest(1000000) {}
