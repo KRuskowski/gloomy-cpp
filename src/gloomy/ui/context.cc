@@ -11,7 +11,6 @@ namespace {
 constexpr double kDoubleClickSeconds = 0.35;
 // Frames a state may go unused before it is dropped.
 constexpr std::uint64_t kStateLifetimeFrames = 120;
-constexpr char kEllipsis[] = "\xE2\x80\xA6";
 
 }  // namespace
 
@@ -123,6 +122,10 @@ void Context::BeginFrame(Vec2 viewport, std::span<const InputEvent> events,
 
 void Context::ProcessEvents(std::span<const InputEvent> events) {
   for (const InputEvent &e : events) {
+    if (e.type != InputEvent::Type::kPointerMove &&
+        e.type != InputEvent::Type::kText) {
+      mods_ = e.mods;
+    }
     switch (e.type) {
       case InputEvent::Type::kPointerMove:
         mouse_ = e.pos;
@@ -152,6 +155,7 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         }
         mouse_down_ = true;
         press_pos_ = mouse_;
+        press_mods_ = e.mods;
         active_ = hit;
         std::uint16_t flags = 0;
         for (const HitEntry &h : prev_hits_) {
@@ -468,31 +472,12 @@ void Context::PaintText(const TextItem &item, const Rect &rect,
     }
     return;
   }
-  const float baseline = rect.y0 + std::round((rect.Height() - line_h) * 0.5F) +
-                         std::round(m.ascent);
-  if (shaped.width <= rect.Width() + 0.5F) {
-    text_.Draw(list, shaped, {x_for(shaped.width), baseline}, spec.color);
-    return;
-  }
-  // Too long: cut at a cluster boundary and add an ellipsis.
-  const text::ShapedText &dots = text_.Shape(kEllipsis, spec.font, spec.size);
-  const float room = rect.Width() - dots.width;
-  std::uint32_t cut = 0;
-  float cut_x = 0.0F;
-  for (const text::ShapedGlyph &g : shaped.glyphs) {
-    if (g.x + g.advance > room) {
-      break;
-    }
-    cut = g.cluster + 1;
-    cut_x = g.x + g.advance;
-  }
-  // Extend to the end of the cluster's bytes.
-  while (cut < text.size() &&
-         (static_cast<unsigned char>(text[cut]) & 0xC0U) == 0x80U) {
-    ++cut;
-  }
-  text_.DrawRange(list, shaped, 0, cut, {rect.x0, baseline}, spec.color);
-  text_.Draw(list, dots, {rect.x0 + cut_x, baseline}, spec.color);
+  const text::HAlign align =
+      spec.align == TextAlign::kCenter
+          ? text::HAlign::kCenter
+          : (spec.align == TextAlign::kRight ? text::HAlign::kRight
+                                             : text::HAlign::kLeft);
+  text_.DrawFitted(list, text, spec.font, spec.size, rect, spec.color, align);
 }
 
 // Ids.

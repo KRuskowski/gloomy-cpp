@@ -169,4 +169,46 @@ void TextSystem::DrawText(gfx::DrawList &list, std::string_view text,
        color);
 }
 
+auto TextSystem::DrawFitted(gfx::DrawList &list, std::string_view text,
+                            FontId font, float size, const Rect &box,
+                            const Color &color, HAlign align) -> float {
+  static constexpr std::string_view kEllipsis = "\xE2\x80\xA6";
+  const ShapedText &shaped = Shape(text, font, size);
+  const FontMetrics m = fonts_.Metrics(font, size);
+  const float baseline = box.y0 +
+                         std::round((box.Height() - m.LineHeight()) * 0.5F) +
+                         std::round(m.ascent);
+  if (shaped.width <= box.Width() + 0.5F) {
+    float x = box.x0;
+    if (align == HAlign::kCenter) {
+      x = std::round(box.x0 + (box.Width() - shaped.width) * 0.5F);
+    } else if (align == HAlign::kRight) {
+      x = std::round(box.x1 - shaped.width);
+    }
+    Draw(list, shaped, {x, baseline}, color);
+    return x;
+  }
+  // Too long: cut at a cluster boundary and add an ellipsis.
+  const ShapedText &dots = Shape(kEllipsis, font, size);
+  const float room = box.Width() - dots.width;
+  std::uint32_t cut = 0;
+  float cut_x = 0.0F;
+  for (const ShapedGlyph &g : shaped.glyphs) {
+    if (g.x + g.advance > room) {
+      break;
+    }
+    cut = g.cluster + 1;
+    cut_x = g.x + g.advance;
+  }
+  while (cut < text.size() &&
+         (static_cast<unsigned char>(text[cut]) & 0xC0U) == 0x80U) {
+    ++cut;
+  }
+  // Re-fetch: Shape() of the ellipsis may have rehashed the cache, but
+  // entries are stable (unique_ptr), so `shaped` is still valid.
+  DrawRange(list, shaped, 0, cut, {box.x0, baseline}, color);
+  Draw(list, dots, {box.x0 + cut_x, baseline}, color);
+  return box.x0;
+}
+
 }  // namespace gloomy::text

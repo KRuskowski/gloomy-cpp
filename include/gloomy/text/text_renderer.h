@@ -18,6 +18,9 @@
 
 namespace gloomy::text {
 
+/// Horizontal alignment of a line of text in a box.
+enum class HAlign : std::uint8_t { kLeft, kCenter, kRight };
+
 /// A line of a wrapped paragraph: a byte range of the source text.
 struct TextLine {
   std::uint32_t begin = 0;
@@ -72,6 +75,13 @@ class TextSystem {
   void DrawRange(gfx::DrawList &list, const ShapedText &shaped,
                  std::uint32_t begin, std::uint32_t end, Vec2 origin,
                  const Color &color);
+
+  /// Draws `text` on one line inside `box`: vertically centred, aligned,
+  /// and cut with an ellipsis when it does not fit.
+  /// @return The x where the drawn text starts (for highlight overlays).
+  auto DrawFitted(gfx::DrawList &list, std::string_view text, FontId font,
+                  float size, const Rect &box, const Color &color,
+                  HAlign align = HAlign::kLeft) -> float;
 
   /// Shapes and draws `text` with its top-left corner at `top_left`.
   void DrawText(gfx::DrawList &list, std::string_view text, FontId font,

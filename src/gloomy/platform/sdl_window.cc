@@ -95,8 +95,11 @@ auto TranslateEvent(const SDL_Event &event, float scale)
       const float x = static_cast<float>(event.button.x) * scale;
       const float y = static_cast<float>(event.button.y) * scale;
       const ui::PointerButton b = TranslateButton(event.button.button);
-      return event.type == SDL_MOUSEBUTTONDOWN ? InputEvent::Down(x, y, b)
-                                               : InputEvent::Up(x, y, b);
+      InputEvent e = event.type == SDL_MOUSEBUTTONDOWN
+                         ? InputEvent::Down(x, y, b)
+                         : InputEvent::Up(x, y, b);
+      e.mods = TranslateMods(static_cast<Uint16>(SDL_GetModState()));
+      return e;
     }
     case SDL_MOUSEWHEEL: {
       float dx = event.wheel.preciseX;
@@ -105,7 +108,9 @@ auto TranslateEvent(const SDL_Event &event, float scale)
         dx = -dx;
         dy = -dy;
       }
-      return InputEvent::Wheel(dx, dy);
+      InputEvent e = InputEvent::Wheel(dx, dy);
+      e.mods = TranslateMods(static_cast<Uint16>(SDL_GetModState()));
+      return e;
     }
     case SDL_KEYDOWN:
     case SDL_KEYUP: {

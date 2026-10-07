@@ -52,8 +52,10 @@ add_library(GlText OBJECT
 
 add_library(GlUi OBJECT
   src/gloomy/ui/context.cc
+  src/gloomy/ui/data_grid.cc
   src/gloomy/ui/layout.cc
   src/gloomy/ui/theme.cc
+  src/gloomy/ui/widget_util.cc
   src/gloomy/ui/widgets.cc
 )
 

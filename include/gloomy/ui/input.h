@@ -118,11 +118,12 @@ struct InputEvent {
     return e;
   }
 
-  static auto Down(float x, float y, PointerButton b = PointerButton::kLeft)
-      -> InputEvent {
+  static auto Down(float x, float y, PointerButton b = PointerButton::kLeft,
+                   std::uint8_t m = kModNone) -> InputEvent {
     InputEvent e = Move(x, y);
     e.type = Type::kPointerDown;
     e.button = b;
+    e.mods = m;
     return e;
   }
 

@@ -200,6 +200,15 @@ class Context {
 
   auto mouse_down() const -> bool { return mouse_down_; }
 
+  /// Where the pointer was last pressed.
+  auto press_pos() const -> Vec2 { return press_pos_; }
+
+  /// Modifier keys of the latest input event.
+  auto mods() const -> std::uint8_t { return mods_; }
+
+  /// Modifier keys held at the last pointer press.
+  auto press_mods() const -> std::uint8_t { return press_mods_; }
+
   /// Wheel movement (lines) over the innermost wheel node `id` this frame.
   auto Wheel(Id id) const -> Vec2;
 
@@ -394,6 +403,8 @@ class Context {
   Vec2 mouse_;
   bool mouse_down_ = false;
   Vec2 press_pos_;
+  std::uint8_t press_mods_ = kModNone;
+  std::uint8_t mods_ = kModNone;
   Id hovered_ = kNoId;
   Id active_ = kNoId;
   Id clicked_ = kNoId;
