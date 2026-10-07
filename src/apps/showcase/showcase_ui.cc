@@ -53,9 +53,9 @@ void ApplyActivePreset(ShowcaseState &s) {
   }
 }
 
-void Toast(ui::Context &ctx, ShowcaseState &s, std::string text) {
-  s.toast = std::move(text);
-  s.toast_until = ctx.time() + 3.0;
+void Toast(ShowcaseState &s, std::string text,
+           ui::Tone tone = ui::Tone::kNeutral) {
+  s.toasts.Show(std::move(text), tone);
 }
 
 // Drills down from an answer or card into the table behind it.
@@ -182,14 +182,15 @@ void MarketsTab(ui::Context &ctx, ShowcaseState &s) {
                           : "My view",
             s.grid),
         *s.market));
-    Toast(ctx, s, "View copied to the clipboard; paste it to share.");
+    Toast(
+        s, "View copied to the clipboard; paste it to share.", ui::Tone::kGood);
   }
   if (bar.save) {
     ui::ViewPreset p = ui::CapturePreset(
         "My view " + std::to_string(s.presets.size() - 4), s.grid);
     s.presets.push_back(std::move(p));
     s.preset = static_cast<int>(s.presets.size()) - 1;
-    Toast(ctx, s, "Saved as \"" + s.presets.back().name + "\".");
+    Toast(s, "Saved as \"" + s.presets.back().name + "\".");
   }
 
   std::string status;
@@ -212,12 +213,12 @@ void MarketsTab(ui::Context &ctx, ShowcaseState &s) {
   grid_layout.height = SizeSpec::Grow();
   const ui::GridResult g =
       ui::DataGrid(ctx, "##market", *s.view, s.grid, grid_layout);
-  if (g.query_changed) {
+  if (ui::GridCellMenu(ctx, "##cell_menu", *s.view, s.grid, g) ||
+      g.query_changed) {
     s.preset = -1;
   }
   if (g.activated && g.row) {
-    Toast(ctx,
-          s,
+    Toast(s,
           "Plot course to " +
               std::string(s.market->GetText(apps::kStation, *g.row)) + ".");
   }
@@ -275,7 +276,7 @@ void ContractTab(ui::Context &ctx, ShowcaseState &s) {
   const ui::DocumentResult d =
       ui::DocumentView(ctx, "##contract", s.contract, s.doc);
   if (d.link) {
-    Toast(ctx, s, "Open " + *d.link);
+    Toast(s, "Open " + *d.link);
   }
   ui::End(ctx);
   ui::End(ctx);
@@ -477,17 +478,7 @@ void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
     }
   }
 
-  if (!s.toast.empty() && ctx.time() < s.toast_until) {
-    const Vec2 vp = ctx.viewport();
-    ctx.BeginLayer(ui::LayerKind::kFloating,
-                   ctx.GetId("##toast"),
-                   Rect{vp.x - 380, vp.y - 70, vp.x, vp.y});
-    ui::LabelOptions opt;
-    opt.width = SizeSpec::Fixed(340);
-    opt.wrap = true;
-    ui::Label(ctx, s.toast, opt);
-    ctx.EndLayer();
-  }
+  ui::Toasts(ctx, s.toasts);
 }
 
 }  // namespace gloomy::showcase

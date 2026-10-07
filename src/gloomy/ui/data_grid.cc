@@ -5,6 +5,7 @@
 
 #include "gloomy/core/utf8.h"
 #include "gloomy/data/search.h"
+#include "gloomy/ui/overlays.h"
 #include "gloomy/ui/widgets.h"
 #include "ui/widget_util.h"
 
@@ -547,6 +548,8 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
       }
       SetCursor(view, state, hit.pos);
       result.context_row = r;
+      result.context_column =
+          state.columns[static_cast<std::size_t>(hit.col)].column;
     }
   }
   return reveal_cursor;
@@ -1292,6 +1295,82 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
       selection_before !=
           state.selection.keys.size() + (state.selection.all ? 1ULL << 62U : 0);
   return result;
+}
+
+namespace {
+
+struct CellMenuTarget {
+  data::RowIndex row = 0;
+  int column = -1;
+};
+
+}  // namespace
+
+auto GridCellMenu(Context &ctx, std::string_view label,
+                  const data::TableView &view, GridState &state,
+                  const GridResult &result) -> bool {
+  CellMenuTarget &target =
+      ctx.State<CellMenuTarget>(HashCombine(ctx.GetId(label), 0x746774ULL));
+  if (result.context_row && result.context_column >= 0) {
+    target = {*result.context_row, result.context_column};
+    OpenContextMenu(ctx, label);
+  }
+  if (!BeginContextMenu(ctx, label)) {
+    return false;
+  }
+  const data::Query before = state.query;
+  const data::TableSource &src = view.source();
+  const ColumnInfo &info = src.Columns()[target.column];
+  std::string cell;
+  src.FormatCell(target.row, target.column, cell);
+  std::string shown =
+      cell.size() > 24 ? cell.substr(0, 24) + "\xE2\x80\xA6" : cell;
+  if (MenuItem(ctx, "Copy cell")) {
+    ctx.clipboard().set(cell);
+  }
+  if (MenuItem(ctx, "Copy rows", "Ctrl+C")) {
+    ctx.clipboard().set(CopyAsTsv(view, state));
+  }
+  MenuSeparator(ctx);
+  auto value_filter = [&](bool keep) {
+    data::Filter f;
+    f.column = target.column;
+    if (info.type == ColumnType::kEnum || info.type == ColumnType::kBool) {
+      const std::int64_t v = src.GetInt64(target.column, target.row);
+      f.op = data::FilterOp::kInSet;
+      if (keep) {
+        f.set = {v};
+      } else {
+        const std::int64_t n =
+            info.type == ColumnType::kBool
+                ? 2
+                : static_cast<std::int64_t>(info.enum_labels.size());
+        for (std::int64_t i = 0; i < n; ++i) {
+          if (i != v) {
+            f.set.push_back(i);
+          }
+        }
+      }
+    } else if (info.IsNumeric()) {
+      f.op = keep ? data::FilterOp::kEqual : data::FilterOp::kNotEqual;
+      f.a = src.GetDouble(target.column, target.row);
+    } else {
+      f.op = keep ? data::FilterOp::kTextEquals : data::FilterOp::kNotContains;
+      f.text = cell;
+    }
+    state.query.filters.push_back(std::move(f));
+  };
+  if (MenuItem(ctx, info.title + ": only \"" + shown + "\"")) {
+    value_filter(true);
+  }
+  if (MenuItem(ctx, info.title + ": hide \"" + shown + "\"")) {
+    value_filter(false);
+  }
+  if (MenuItem(ctx, "Clear filters", {}, !state.query.filters.empty())) {
+    state.query.filters.clear();
+  }
+  EndContextMenu(ctx);
+  return state.query != before;
 }
 
 }  // namespace gloomy::ui

@@ -118,8 +118,10 @@ struct GridResult {
   bool selection_changed = false;
   /// Sort, filters or search changed through the grid's UI.
   bool query_changed = false;
-  /// Right click on a row (source row), for app context menus.
+  /// Right click on a cell: source row and source column, for context
+  /// menus (see GridCellMenu()).
   std::optional<data::RowIndex> context_row;
+  int context_column = -1;
 };
 
 /// One GridColumn per source column, sized by type.
@@ -142,6 +144,14 @@ auto CopyAsTsv(const data::TableView &view, const GridState &state)
 /// formatted and drawn; selection and cursor survive re-queries.
 auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
               GridState &state, LayoutSpec layout = {}) -> GridResult;
+
+/// The standard cell context menu: copy the cell or the selected rows,
+/// show only or hide rows with this value, clear filters. Call after
+/// DataGrid() with its result every frame.
+/// @return True if the query changed.
+auto GridCellMenu(Context &ctx, std::string_view label,
+                  const data::TableView &view, GridState &state,
+                  const GridResult &result) -> bool;
 
 }  // namespace gloomy::ui
 

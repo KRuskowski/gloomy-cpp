@@ -11,6 +11,7 @@
 #include "gloomy/ui/data_grid.h"
 #include "gloomy/ui/document_view.h"
 #include "gloomy/ui/finder.h"
+#include "gloomy/ui/overlays.h"
 #include "gloomy/ui/view_preset.h"
 #include "gloomy/ui/widgets.h"
 #include "sample_data.h"
@@ -38,8 +39,7 @@ struct ShowcaseState {
   double avg_ore = 0.0;
   double avg_energy = 0.0;
   std::int64_t shortages = 0;
-  std::string toast;
-  double toast_until = 0.0;
+  ui::ToastQueue toasts;
   // Global search (Ctrl+K) and the command palette (Ctrl+P).
   ui::FinderState finder;
   bool palette_only = false;
