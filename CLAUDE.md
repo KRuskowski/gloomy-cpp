@@ -2,10 +2,49 @@
 
 C++23 respin of gloomy (`~/prsn/gloomy`, Rust/wgpu, ~18k lines: SDF primitives, flexbox/grid layout, themes, RON-declared UIs, rich text, virtualised DataGrid, charts, designer). Renders on raw Vulkan; windows and input through SDL2 (Vulkan surface) for now. First consumer: the X-conomy client (`~/dev/x_conomy`), which needs very large searchable tables and long searchable text (contracts).
 
+Design: `docs/design.md` (read it first; section 2 is the guiding principle "deep data, accessible surface"). gloomy is a reference for the low level only, not for the widget layer.
+
+Current state: all five phases done; see docs/design.md section 17 for what is built and what is not (docking, column groups, tree rows, document text selection, trigram index, bidi). Apps: `gloomy_demo` (widget gallery), `gloomy_showcase` (X-conomy market screen over 1M rows, contract, overview panels, Ctrl+K/Ctrl+P finder), `gloomy_bench` (frame times, docs/design.md section 14.1).
+
+## Build and test
+
+```bash
+cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug -G Ninja
+cmake --build build-debug -j4 && ctest --test-dir build-debug -j4
+# Headless screenshot of the demo (any Vulkan device, lavapipe shown):
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
+    ./build-debug/src/apps/demo/gloomy_demo --screenshot /tmp/demo.png
+# Release build, showcase screenshots (--tab 0..2, --finder "query"), bench:
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -G Ninja
+cmake --build build-release -j4
+./build-release/src/apps/showcase/gloomy_showcase --tab 2 --screenshot /tmp/s.png
+./build-release/src/apps/bench/gloomy_bench   # GPU; VK_ICD_FILENAMES for lavapipe
+```
+
+- GPU tests run on lavapipe: ctest sets `VK_ICD_FILENAMES` from the cache variable `GL_TEST_ICD` (`tests/CMakeLists.txt`); empty means the system default device.
+- Validation (`VK_LAYER_KHRONOS_validation`) is on in every GPU test; any message fails the test (`tests/test_support/gpu_test.cc`). `GLOOMY_NO_VALIDATION=1` turns it off.
+- Image tests compare with `tests/reference/*.png` (tolerance per channel, max differing pixels). On failure `build-debug/test_output/<name>_actual.png` and `_diff.png` are written. `GLOOMY_UPDATE_REFERENCES=1 ctest ...` rewrites references: always look at the new images (Read tool) before committing them, and run `clang-format -i` and rebuild first (reordered includes can pick other float/double overloads and shift pixels slightly). Make sure the build succeeded; ninja stops at the first error and leaves stale test binaries.
+- `GLOOMY_DEVICE=<index>` picks a physical device.
+- Dependencies (system): Vulkan headers/loader, glslc, FreeType, HarfBuzz (pkg-config), libpng, SDL2 (`-DBUILD_PLATFORM_SDL2=OFF` to skip), GoogleTest (system or fetched).
+
+## Layout
+
+Like X-conomy: public headers `include/gloomy/<module>/`, implementation `src/gloomy/<module>/`, each module an OBJECT library in `cmake/BuildGloomyLib.cmake`, collected into the static library `gloomy`; SDL2 platform layer is the separate `gloomy_sdl2`. Tests `tests/<module>/test_<name>.cc`, registered by `tests/cmake/<module>/test_<name>.cmake`. Apps in `src/apps/`.
+
+- Shaders: `src/gloomy/gfx/shaders/ui.{vert,frag}`, compiled by glslc at build time and embedded (`cmake/CompileShaders.cmake`, `cmake/EmbedFileScript.cmake`). Fonts in `assets/fonts/` (Liberation, OFL) are embedded the same way (`cmake/EmbedFiles.cmake`).
+- One instance format for every primitive: `Instance` in `include/gloomy/gfx/draw_list.h`; must match the vertex attributes in `src/gloomy/gfx/ui_renderer.cc` (`CreatePipeline`) and `ui.vert`.
+- Device ownership vs. UI rendering: `gfx::DeviceContext` (`Create` or `Wrap` a host device), `gfx::UiRenderer` (`Prepare` outside, `Draw` inside the caller's dynamic rendering), `gfx::OffscreenTarget`, `gfx::Swapchain`.
+- UI frame model: `ui::Context` (`include/gloomy/ui/context.h`): immediate-mode declaration into a per-frame node tree; input resolves against the previous frame's layout (`ProcessEvents`, `HitTest`); results are swapped in at the end of `EndFrame()`; per-id state via `State<T>(id)`; overlay layers (`BeginLayer`: popup, tooltip, modal). Layout engine: `ui::LayoutTree` (`src/gloomy/ui/layout.cc`, Clay-style passes). Widgets: `include/gloomy/ui/widgets.h`. Themes: `src/gloomy/ui/theme.cc`.
+- Data layer (`include/gloomy/data/`): `TableSource` (typed access, `Explain`), `ColumnarTable`, `FunctionTable` (zero-copy adapter for SoA), `Query`/`Execute` (`src/gloomy/data/query.cc`: filters, parallel multi-key sort, narrowing/resort/cache paths), `SearchCorpus` (`src/gloomy/data/search.cc`), `TableView` (`src/gloomy/data/table_view.cc`: sync below 50k rows, else worker thread with cancellation), `Document` (Markdown subset, `src/gloomy/data/document.cc`).
+- Charts: `ui::LineChart` (`src/gloomy/ui/chart.cc`). Docking: `ui::DockLayout`, `ui::DockSpace` (`src/gloomy/ui/dock.cc`).
+- Answer-first widgets (design section 2): `include/gloomy/ui/summary.h` (ExplainedLabel, Sparkline, SummaryCard, SummaryPanel, AnswerLine), `include/gloomy/ui/view_preset.h` (presets, encode/decode, PresetBar), `include/gloomy/ui/navigation.h` (NavigationTarget, Navigate, NavigationProvider). Finder (palette + global search): `src/gloomy/ui/finder.cc`. Menus, dialogs, toasts, split panes: `src/gloomy/ui/overlays.cc`.
+- Grouping: `Query::group_by`/`aggregates`, `BuildGroups` (`src/gloomy/data/query.cc`), `DisplayRows` (`src/gloomy/data/display_rows.cc`); the grid works on display lines (`LineRow`, `LineKey` in `src/gloomy/ui/data_grid.cc`). Append-only sources: `ExecuteAppend`.
+- Data widgets: `ui::DataGrid` (`src/gloomy/ui/data_grid.cc`: `HandleKeys`, `HandlePointer`, `PaintGrid`, `HeaderMenu`), `ui::DocumentView` (`src/gloomy/ui/document_view.cc`, Fenwick tree over block heights), `ui::SearchField` (`src/gloomy/ui/widgets.cc`). Rich text layout: `text::LayoutRich` (`src/gloomy/text/rich_layout.cc`).
+- Headless UI tests drive a `testing::UiHarness` (`tests/test_support/ui_harness.h`) with synthetic events; no GPU needed. SDL event translation: `platform::TranslateEvent` (`src/gloomy/platform/sdl_window.cc`).
+- Text: `text::FontSet` (faces, fallback chains), `text::Shaper` (HarfBuzz, font fallback runs, clusters = byte offsets), `text::GlyphCache` (FreeType coverage bitmaps, 4 subpixel bins, into `core::Atlas`), `text::TextSystem` (shape cache, wrap, draw).
+
 ## Conventions
 
-Same as X-conomy / OTC.SDK branch `staging-v12`: Google C++ style, C++23, `snake_case.h/.cc`, include guards (no `#pragma once`), trailing return types, PascalCase functions, `member_` suffix, `kConstants`, `///` doxygen comments on the line above, `.clang-format`/`.clang-tidy`/`.editorconfig` in the repo. Python follows `.flake8`. Unit tests (GoogleTest) for all code; one test file per test binary. Markdown prose is never hard-wrapped.
+Same as X-conomy / OTC.SDK branch `staging-v12`: Google C++ style, C++23, `snake_case.h/.cc`, include guards (no `#pragma once`), trailing return types, PascalCase functions, `member_` suffix, `kConstants`, `///` doxygen comments on the line above, `.clang-format`/`.clang-tidy`/`.editorconfig` in the repo (`clang-format -i` before committing). Python follows `.flake8`. Unit tests (GoogleTest) for all code; one test file per test binary. Markdown prose is never hard-wrapped.
 
-## Testing
-
-Headless rendering tests run on Mesa's lavapipe (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`): render offscreen, read back pixels, compare against reference images with a tolerance.
+Git: branch `gl-core`, commit as Karl Ruskowski <karl.ruskowski@optris.de> (repo-local config), unsigned, no Co-Authored-By; push to `origin` only.

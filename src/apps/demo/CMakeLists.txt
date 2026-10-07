@@ -1,0 +1,10 @@
+add_executable(gloomy_demo
+  demo_ui.cc
+  main.cc
+)
+target_link_libraries(gloomy_demo
+  PRIVATE
+    gloomy::gloomy
+    gloomy_app_shell
+)
+gl_configure_target(gloomy_demo)

@@ -1,0 +1,9 @@
+add_executable(gloomy_bench
+  main.cc
+)
+target_link_libraries(gloomy_bench
+  PRIVATE
+    gloomy::gloomy
+    gloomy_app_shell
+)
+gl_configure_target(gloomy_bench)

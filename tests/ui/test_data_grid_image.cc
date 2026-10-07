@@ -1,0 +1,188 @@
+#include <gtest/gtest.h>
+
+#include <memory>
+
+#include "gloomy/gfx/offscreen_target.h"
+#include "gloomy/gfx/ui_renderer.h"
+#include "gloomy/ui/data_grid.h"
+#include "gloomy/ui/widgets.h"
+#include "test_support/gpu_test.h"
+#include "test_support/market_table.h"
+#include "test_support/ui_harness.h"
+
+namespace gloomy::ui {
+namespace {
+
+class DataGridImageTest : public testing::GpuTest {
+ protected:
+  auto Render(testing::UiHarness &h, VkExtent2D size) -> Image {
+    gfx::UiRenderer renderer(ctx(), gfx::OffscreenTarget::kFormat, h.atlas());
+    gfx::OffscreenTarget target(ctx(), size);
+    return gfx::RenderToImage(ctx(),
+                              renderer,
+                              target,
+                              h.ctx().draw_lists(),
+                              h.ctx().theme().colors.background);
+  }
+};
+
+TEST_F(DataGridImageTest, MarketGrid) {
+  testing::UiHarness h({720, 300});
+  auto table = std::make_shared<testing::MarketTable>(2000);
+  data::TableView view(table);
+  GridState state;
+  state.columns = DefaultColumns(*table);
+  state.columns[0].pinned = true;
+  state.columns[0].width = 110;
+  state.columns[0].renderer = CellRenderer::kAge;
+  state.columns[0].age_column = 6;
+  state.columns[0].age_fresh = 60;
+  state.columns[0].age_stale = 540;
+  state.columns[1].width = 110;
+  state.columns[2].width = 120;
+  state.columns[5].renderer = CellRenderer::kBar;
+  state.columns[5].bar_max = 100000;
+  state.query.sort = {{2, data::SortDirection::kAscending},
+                      {4, data::SortDirection::kDescending}};
+  state.query.search = "ore";
+  state.query.filters = {
+      {.column = 3, .op = data::FilterOp::kInSet, .set = {0, 1}}};
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##market", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.ctx().SetFocus(h.ctx().GetId("##market"));
+  h.Frame(ui, testing::UiHarness::Key(Key::kDown));
+  h.Frame(ui, testing::UiHarness::Key(Key::kDown, kModShift));
+  h.Frame(ui, testing::UiHarness::Key(Key::kDown, kModShift));
+  testing::ExpectMatchesReference(Render(h, {720, 300}), "data_grid");
+}
+
+TEST_F(DataGridImageTest, GroupedGrid) {
+  testing::UiHarness h({720, 330});
+  auto table = std::make_shared<testing::MarketTable>(400);
+  data::TableView view(table);
+  GridState state;
+  state.columns = DefaultColumns(*table);
+  state.columns[0].width = 150;
+  state.columns[1].visible = false;
+  state.columns[6].visible = false;
+  state.query.group_by = {1, 2};
+  state.query.sort = {{4, data::SortDirection::kDescending}};
+  state.query.aggregates = {{4, data::AggregateOp::kMean},
+                            {5, data::AggregateOp::kSum}};
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##market", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  // Collapse the second sector group ("Cloudbase" after "Argon Prime").
+  state.collapsed.insert(view.view().groups[6].id);
+  state.display_dirty = true;
+  h.ctx().SetFocus(h.ctx().GetId("##market"));
+  h.Frame(ui, testing::UiHarness::Key(Key::kDown));
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {720, 330}), "data_grid_grouped");
+}
+
+TEST_F(DataGridImageTest, ColumnGroupsAndSparklines) {
+  testing::UiHarness h({720, 220});
+  auto table = std::make_shared<testing::MarketTable>(50);
+  data::TableView view(table);
+  GridState state;
+  GridColumn station{.column = 0, .width = 110, .pinned = true};
+  GridColumn good{.column = 2, .width = 120, .group = "Market"};
+  GridColumn kind{.column = 3,
+                  .width = 90,
+                  .group = "Market",
+                  .renderer = CellRenderer::kBadge};
+  GridColumn price{.column = 4, .width = 110, .group = "Price"};
+  GridColumn trend{.column = 4,
+                   .width = 110,
+                   .title = "Trend",
+                   .group = "Price",
+                   .renderer = CellRenderer::kSparkline};
+  GridColumn stock{.column = 5, .width = 100};
+  state.columns = {station, good, kind, price, trend, stock};
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##market", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {720, 220}), "data_grid_bands");
+}
+
+TEST_F(DataGridImageTest, TreeGrid) {
+  testing::UiHarness h({560, 260});
+  data::ColumnInfo name{
+      .name = "name", .title = "Object", .type = data::ColumnType::kText};
+  data::ColumnInfo parent{
+      .name = "parent", .title = "Parent", .type = data::ColumnType::kInt64};
+  parent.searchable = false;
+  data::ColumnInfo cargo{
+      .name = "cargo", .title = "Cargo", .type = data::ColumnType::kInt64};
+  cargo.unit = " t";
+  auto table = std::make_shared<data::ColumnarTable>(
+      std::vector<data::ColumnInfo>{name, parent, cargo});
+
+  const struct {
+    const char *name;
+    std::int64_t parent;
+    std::int64_t cargo;
+  } kRows[] = {{"Argon Prime", -1, 0},
+               {"Trading Station", 0, 1200},
+               {"Mercury Hauler", 1, 340},
+               {"Mercury Express", 1, 120},
+               {"Shipyard", 0, 80},
+               {"Ore Belt", -1, 0},
+               {"Ore Mine Alpha", 5, 5400},
+               {"Ore Mine Beta", 5, 3100},
+               {"Mercury Tanker", 7, 900},
+               {"Home of Light", -1, 0}};
+
+  for (const auto &r : kRows) {
+    table->AddRow({std::string_view(r.name), r.parent, r.cargo});
+  }
+  data::TableView view(table);
+  GridState state;
+  state.columns = DefaultColumns(*table);
+  state.columns[0].width = 260;
+  state.columns[1].visible = false;
+  state.query.tree_parent = 1;
+  state.query.search = "mercury";
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##tree", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {560, 260}), "data_grid_tree");
+}
+
+}  // namespace
+}  // namespace gloomy::ui
