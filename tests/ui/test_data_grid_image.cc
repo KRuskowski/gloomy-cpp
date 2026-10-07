@@ -98,6 +98,39 @@ TEST_F(DataGridImageTest, GroupedGrid) {
   testing::ExpectMatchesReference(Render(h, {720, 330}), "data_grid_grouped");
 }
 
+TEST_F(DataGridImageTest, ColumnGroupsAndSparklines) {
+  testing::UiHarness h({720, 220});
+  auto table = std::make_shared<testing::MarketTable>(50);
+  data::TableView view(table);
+  GridState state;
+  GridColumn station{.column = 0, .width = 110, .pinned = true};
+  GridColumn good{.column = 2, .width = 120, .group = "Market"};
+  GridColumn kind{.column = 3,
+                  .width = 90,
+                  .group = "Market",
+                  .renderer = CellRenderer::kBadge};
+  GridColumn price{.column = 4, .width = 110, .group = "Price"};
+  GridColumn trend{.column = 4,
+                   .width = 110,
+                   .title = "Trend",
+                   .group = "Price",
+                   .renderer = CellRenderer::kSparkline};
+  GridColumn stock{.column = 5, .width = 100};
+  state.columns = {station, good, kind, price, trend, stock};
+  auto ui = [&](Context &ctx) {
+    LayoutSpec root;
+    root.padding = Padding::All(8);
+    root.width = SizeSpec::Grow();
+    root.height = SizeSpec::Grow();
+    BeginColumn(ctx, root);
+    DataGrid(ctx, "##market", view, state);
+    ctx.Close();
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {720, 220}), "data_grid_bands");
+}
+
 TEST_F(DataGridImageTest, TreeGrid) {
   testing::UiHarness h({560, 260});
   data::ColumnInfo name{

@@ -36,6 +36,8 @@ struct ColSpan {
 // interaction code and the painter use the same geometry.
 struct Geometry {
   Rect body;
+  /// Column group band above the headers; empty without groups.
+  Rect band;
   Rect header;
   Rect rows;
   Rect status;
@@ -57,7 +59,13 @@ auto MakeGeometry(const GridState &state, const Rect &body, const Theme &t)
   g.row_h = t.metrics.row_height;
   const float header_h = g.row_h + 4.0F;
   const float status_h = g.row_h;
-  g.header = {body.x0, body.y0, body.x1, body.y0 + header_h};
+  const bool groups = std::any_of(
+      state.columns.begin(), state.columns.end(), [](const GridColumn &c) {
+        return c.visible && !c.group.empty();
+      });
+  const float band_h = groups ? g.row_h : 0.0F;
+  g.band = {body.x0, body.y0, body.x1, body.y0 + band_h};
+  g.header = {body.x0, g.band.y1, body.x1, g.band.y1 + header_h};
   g.status = {body.x0, body.y1 - status_h, body.x1, body.y1};
   g.rows = {body.x0, g.header.y1, body.x1, g.status.y0};
   float pinned_x = body.x0;
@@ -101,7 +109,7 @@ struct Hit {
 auto HitAt(const Geometry &g, Vec2 p, double scroll_y, std::int64_t rows)
     -> Hit {
   Hit hit;
-  if (!g.body.Contains(p)) {
+  if (!g.body.Contains(p) || g.band.Contains(p)) {
     return hit;
   }
   for (const ColSpan &c : g.cols) {
@@ -1001,6 +1009,32 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
           }
           break;
         }
+        case CellRenderer::kSparkline: {
+          static thread_local std::vector<float> series;
+          series.clear();
+          if (s.GetSeries(col.column, row, series) && series.size() >= 2) {
+            const auto [lo_it, hi_it] =
+                std::minmax_element(series.begin(), series.end());
+            const float lo = *lo_it;
+            const float range = std::max(1e-6F, *hi_it - lo);
+            const Rect box{span.x0 + kCellPad,
+                           y + 4,
+                           span.x1 - kCellPad,
+                           y + geo.row_h - 4};
+            auto point = [&](std::size_t k) -> Vec2 {
+              return {box.x0 + box.Width() * static_cast<float>(k) /
+                                   static_cast<float>(series.size() - 1),
+                      box.y1 - box.Height() * (series[k] - lo) / range};
+            };
+            const Color trend =
+                series.back() >= series.front() ? c.success : c.error;
+            for (std::size_t k = 1; k < series.size(); ++k) {
+              list.Line(point(k - 1), point(k), 1.3F, trend);
+            }
+          }
+          cell.clear();
+          break;
+        }
         case CellRenderer::kText:
           break;
       }
@@ -1063,6 +1097,43 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
   }
   list.PopClip();
 
+  // Column group band: one label over each run of columns sharing a group.
+  if (!geo.band.Empty()) {
+    list.FillRect(geo.band, Mix(c.surface_raised, c.primary, 0.05F));
+    list.FillRect({geo.band.x0, geo.band.y1 - 1, geo.band.x1, geo.band.y1},
+                  c.divider);
+    std::size_t i = 0;
+    while (i < geo.cols.size()) {
+      const GridColumn &run =
+          state.columns[static_cast<std::size_t>(geo.cols[i].index)];
+      std::size_t j = i + 1;
+      while (j < geo.cols.size()) {
+        const GridColumn &next =
+            state.columns[static_cast<std::size_t>(geo.cols[j].index)];
+        if (next.group != run.group || next.pinned != run.pinned) {
+          break;
+        }
+        ++j;
+      }
+      const Rect span{
+          geo.cols[i].x0, geo.band.y0, geo.cols[j - 1].x1, geo.band.y1 - 1};
+      const Rect clip = span.Intersect(region_for(geo.cols[i]));
+      if (!run.group.empty() && !clip.Empty()) {
+        list.PushClip(clip);
+        pc.text.DrawFitted(list,
+                           run.group,
+                           th.fonts.bold,
+                           small,
+                           span.Inset(kCellPad),
+                           c.text_muted,
+                           text::HAlign::kCenter);
+        list.PopClip();
+        list.FillRect({span.x1 - 1, span.y0 + 4, span.x1, span.y1 - 3},
+                      c.divider);
+      }
+      i = j;
+    }
+  }
   // Header.
   list.FillRect(geo.header, c.surface_raised);
   list.FillRect(
@@ -1119,7 +1190,7 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
     const text::HAlign align =
         IsRightAligned(info) ? text::HAlign::kRight : text::HAlign::kLeft;
     pc.text.DrawFitted(list,
-                       info.title,
+                       col.title.empty() ? info.title : col.title,
                        th.fonts.bold,
                        small,
                        {span.x0 + kCellPad, head.y0, right, head.y1},

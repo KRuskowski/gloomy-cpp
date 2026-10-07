@@ -49,6 +49,23 @@ class MarketTable : public data::ColumnarTable {
     return true;
   }
 
+  // A short price history ending at the current price.
+  auto GetSeries(int col, data::RowIndex row, std::vector<float> &out) const
+      -> bool override {
+    if (col != 4) {
+      return false;
+    }
+    const auto price = static_cast<float>(GetDouble(4, row));
+    std::uint32_t x = row * 2654435761U + 1U;
+    for (int i = 0; i < 12; ++i) {
+      x = x * 1664525U + 1013904223U;
+      const float wobble = static_cast<float>(x % 1000) / 1000.0F - 0.5F;
+      out.push_back(price * (1.0F + 0.08F * wobble + 0.01F * (i - 6)));
+    }
+    out.push_back(price);
+    return true;
+  }
+
   static auto MakeColumns() -> std::vector<data::ColumnInfo> {
     using data::ColumnInfo;
     using data::ColumnType;

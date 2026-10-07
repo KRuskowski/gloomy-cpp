@@ -98,6 +98,15 @@ class TableSource {
   /// Display text of a cell. The default formats by column type.
   virtual void FormatCell(RowIndex row, int col, std::string &out) const;
 
+  /// A short series for sparkline cells (oldest first); false if none.
+  virtual auto GetSeries(int col, RowIndex row, std::vector<float> &out) const
+      -> bool {
+    (void)col;
+    (void)row;
+    (void)out;
+    return false;
+  }
+
   /// Stable identity of a row across versions (selection, focus).
   virtual auto RowKey(RowIndex row) const -> std::uint64_t { return row; }
 

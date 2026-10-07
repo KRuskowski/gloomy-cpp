@@ -26,6 +26,8 @@ enum class CellRenderer : std::uint8_t {
   kAge,
   /// The enum label in a coloured pill.
   kBadge,
+  /// A line chart of TableSource::GetSeries() for the cell.
+  kSparkline,
 };
 
 /// A column of the grid: which source column, and how it looks.
@@ -36,6 +38,11 @@ struct GridColumn {
   bool visible = true;
   /// Pinned columns stay at the left while the rest scrolls sideways.
   bool pinned = false;
+  /// Header text; empty uses the source column's title.
+  std::string title;
+  /// Column group: neighbouring columns with the same group share a
+  /// header band above their headers ("Prices" over buy and sell).
+  std::string group;
   CellRenderer renderer = CellRenderer::kText;
   /// kBar: the value that fills the bar.
   double bar_max = 1.0;

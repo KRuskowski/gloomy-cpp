@@ -376,10 +376,10 @@ Built:
 - UI core: immediate-mode context with stable ids, layout engine, input, focus and Tab order, focus rings, popups, tooltips, modals, floating layers; Dark, Light and High Contrast themes.
 - Widgets: label, heading, button, checkbox, radio, slider, progress, text field, dropdown, tabs, scroll area, X3-style list, search field, tooltips, context menus, dialogs, toasts, split panes, and the docking workspace (`DockLayout`, `DockSpace`: drag-to-dock, serialisable layouts).
 - Data: `TableSource`, `ColumnarTable`, `FunctionTable`, queries with typed filters, multi-key parallel sort, quick search, grouping and aggregates, narrowing/re-sort/cache/append paths, background `TableView`s, shared search corpora, fuzzy matching.
-- Data grid: everything in 11.2 (including grouping and tree rows) except column groups, right pinning, cell-range selection and the sparkline/icon renderers; plus a standard cell context menu ("only this value", "hide this value", copy).
+- Data grid: everything in 11.2 (including grouping, tree rows, column groups and sparkline cells) except right pinning, cell-range selection and icon cells; plus a standard cell context menu ("only this value", "hide this value", copy).
 - Section 2: `ExplainedLabel`, `Sparkline`, `SummaryCard` (glance), `SummaryPanel` (panel), `AnswerLine`, `ViewPreset` with shareable text encoding, `PresetBar`, and `NavigationTarget` with `Navigate()` and `NavigationProvider` (the shared keyboard and search contract for views the app draws, such as the map).
 - Document view with outline jumps, links, search and highlights; the Finder (command palette and global search over tables, documents and commands).
 - Showcase (`gloomy_showcase`) and benchmark (`gloomy_bench`, section 14.1).
 
-Not built yet: column groups and right-pinned columns in the grid; trigram index; bidirectional text; number, date and time fields; charts beyond sparklines; the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
+Not built yet: right-pinned columns and cell-range selection in the grid; trigram index; bidirectional text; number, date and time fields; charts beyond sparklines; the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
 
