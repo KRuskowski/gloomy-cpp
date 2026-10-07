@@ -306,7 +306,7 @@ auto SummaryPanel(Context &ctx, std::string_view label,
     NodeDesc row;
     row.layout.mode = LayoutMode::kRow;
     row.layout.height = SizeSpec::Fixed(t.metrics.row_height);
-    row.layout.padding = Padding::Xy(6, 0);
+    row.layout.padding = Padding::Xy(1, 0);
     row.layout.gap = 0;
     row.layout.align = Align::kCenter;
     if (stripe) {
@@ -326,6 +326,7 @@ auto SummaryPanel(Context &ctx, std::string_view label,
       // twice the room of numbers.
       LayoutSpec cell;
       cell.width = SizeSpec::Percent(Share(info));
+      cell.padding = Padding::Xy(5, 0);
       ctx.Text(text, cell);
     }
     ctx.Close();

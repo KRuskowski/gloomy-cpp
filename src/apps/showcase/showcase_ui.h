@@ -9,6 +9,7 @@
 #include "gloomy/data/document.h"
 #include "gloomy/data/table_view.h"
 #include "gloomy/ui/data_grid.h"
+#include "gloomy/ui/dock.h"
 #include "gloomy/ui/document_view.h"
 #include "gloomy/ui/finder.h"
 #include "gloomy/ui/overlays.h"
@@ -48,6 +49,9 @@ struct ShowcaseState {
   std::unique_ptr<ui::CommandProvider> commands;
   std::unique_ptr<ui::TableProvider> station_search;
   std::unique_ptr<ui::DocumentProvider> contract_search;
+  // The docked workspace tab: the same panels, arranged freely.
+  ui::DockLayout dock{{"markets"}};
+  ui::DockState dock_state;
   // Work requested by commands, done in the next frame.
   std::string focus_request;
   int theme_request = -1;

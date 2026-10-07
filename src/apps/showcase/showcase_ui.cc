@@ -386,6 +386,8 @@ void InitShowcase(ShowcaseState &s, int rows) {
     s.shortages += s.market->GetInt64(apps::kStock, r) < 500 ? 1 : 0;
   }
 
+  s.dock.Dock("contract", "markets", ui::DockSide::kRight, 0.4F);
+  s.dock.Dock("overview", "contract", ui::DockSide::kBottom, 0.55F);
   s.contract = data::Document::ParseMarkdown(apps::SampleContract(400));
   s.outline = s.contract.Outline();
 
@@ -494,14 +496,36 @@ void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
   Answer(ctx, s);
   Cards(ctx, s);
   static const std::vector<std::string> kTabs{
-      "Markets", "Contract AFM-0042", "Overview"};
+      "Markets", "Contract AFM-0042", "Overview", "Workspace"};
   ui::Tabs(ctx, "##tabs", s.tab, kTabs);
   if (s.tab == 0) {
     MarketsTab(ctx, s);
   } else if (s.tab == 1) {
     ContractTab(ctx, s);
-  } else {
+  } else if (s.tab == 2) {
     OverviewTab(ctx, s);
+  } else {
+    // The same screens as docked panels: drag tabs to rearrange.
+    ui::DockSpace(
+        ctx,
+        "##workspace",
+        s.dock,
+        s.dock_state,
+        [&s](ui::Context &c, const std::string &panel) {
+          if (panel == "markets") {
+            MarketsTab(c, s);
+          } else if (panel == "contract") {
+            ContractTab(c, s);
+          } else {
+            OverviewTab(c, s);
+          }
+        },
+        [](const std::string &panel) -> std::string {
+          return panel == "markets"    ? "Markets"
+                 : panel == "contract" ? "Contract"
+                                       : "Overview";
+        },
+        false);
   }
   // Status line.
   char status[160];
