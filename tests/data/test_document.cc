@@ -5,6 +5,18 @@
 namespace gloomy::data {
 namespace {
 
+TEST(DocumentTest, VersionsAreUniqueAcrossDocuments) {
+  const Document a = Document::ParseMarkdown("# A\n\nOne");
+  const Document b = Document::ParseMarkdown("# B\n\nTwo");
+  EXPECT_EQ(a.size(), b.size());
+  EXPECT_NE(a.version(), b.version());
+  Document c = a;
+  const std::uint64_t before = c.version();
+  c.AddBlock({});
+  EXPECT_NE(c.version(), before);
+  EXPECT_NE(c.version(), b.version());
+}
+
 TEST(DocumentTest, InlineMarkup) {
   DocBlock b;
   Document::ParseInline(
