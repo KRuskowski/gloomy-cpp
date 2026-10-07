@@ -5,6 +5,7 @@
 
 #include "gloomy/ui/summary.h"
 #include "gloomy/ui/theme.h"
+#include "gloomy/ui/view_preset.h"
 
 namespace gloomy::showcase {
 
@@ -224,6 +225,55 @@ void MarketsTab(ui::Context &ctx, ShowcaseState &s) {
   }
 }
 
+// Panels: the level between the glance cards and the full table.
+void OverviewTab(ui::Context &ctx, ShowcaseState &s) {
+  s.shortage_view->Update(ctx.time());
+  LayoutSpec row;
+  row.gap = 10;
+  row.width = SizeSpec::Grow();
+  ui::BeginRow(ctx, row);
+  {
+    char avg[32];
+    std::snprintf(avg, sizeof(avg), "%.2f Cr", s.avg_ore);
+    std::string offers;
+    data::FormatInt(
+        static_cast<std::int64_t>(s.answer_view->rows().size()), true, offers);
+    const ui::KeyNumber numbers[] = {
+        {"Ore offers", {offers, ""}},
+        {"Average price", {avg, "Mean of all ore offers"}, ui::Tone::kNeutral}};
+    const int columns[] = {
+        apps::kStation, apps::kSector, apps::kStock, apps::kPrice};
+    ui::SummaryPanelSpec spec;
+    spec.title = "Cheapest ore";
+    spec.numbers = numbers;
+    spec.columns = columns;
+    spec.rows = 6;
+    spec.action = "All ore offers";
+    if (ui::SummaryPanel(ctx, "##ore_panel", *s.answer_view, spec)) {
+      DrillTo(ctx, s, 1);
+    }
+  }
+  {
+    std::string count;
+    data::FormatInt(s.shortages, true, count);
+    const ui::KeyNumber numbers[] = {{"Markets short",
+                                      {count, "Under 500 units in stock"},
+                                      ui::Tone::kWarning}};
+    const int columns[] = {
+        apps::kStation, apps::kGood, apps::kStock, apps::kPrice};
+    ui::SummaryPanelSpec spec;
+    spec.title = "Shortages";
+    spec.numbers = numbers;
+    spec.columns = columns;
+    spec.rows = 6;
+    spec.action = "All shortages";
+    if (ui::SummaryPanel(ctx, "##shortage_panel", *s.shortage_view, spec)) {
+      DrillTo(ctx, s, 2);
+    }
+  }
+  ui::End(ctx);
+}
+
 void ContractTab(ui::Context &ctx, ShowcaseState &s) {
   LayoutSpec row;
   row.gap = 10;
@@ -324,6 +374,8 @@ void InitShowcase(ShowcaseState &s, int rows) {
       Preset("My stations", "Stations you own", player),
   };
   s.answer_view->SetQuery(ore);
+  s.shortage_view = std::make_unique<data::TableView>(s.market);
+  s.shortage_view->SetQuery(shortages);
   ApplyActivePreset(s);
 
   s.avg_ore = s.market->AveragePrice("Ore");
@@ -441,12 +493,15 @@ void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
   Header(ctx, info, s);
   Answer(ctx, s);
   Cards(ctx, s);
-  static const std::vector<std::string> kTabs{"Markets", "Contract AFM-0042"};
+  static const std::vector<std::string> kTabs{
+      "Markets", "Contract AFM-0042", "Overview"};
   ui::Tabs(ctx, "##tabs", s.tab, kTabs);
   if (s.tab == 0) {
     MarketsTab(ctx, s);
-  } else {
+  } else if (s.tab == 1) {
     ContractTab(ctx, s);
+  } else {
+    OverviewTab(ctx, s);
   }
   // Status line.
   char status[160];

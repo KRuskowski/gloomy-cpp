@@ -4,7 +4,7 @@ C++23 respin of gloomy (`~/prsn/gloomy`, Rust/wgpu, ~18k lines: SDF primitives, 
 
 Design: `docs/design.md` (read it first; section 2 is the guiding principle "deep data, accessible surface"). gloomy is a reference for the low level only, not for the widget layer.
 
-Current state: phases 1-4 done (design, foundation, layout/input/focus/theme/basic widgets, data layer, DataGrid, search field, document view). Next: phase 5, showcase and benchmark; then the answer-first widgets (SummaryCard, ExplainedValue, ViewPreset), command palette and global search from docs/design.md.
+Current state: all five phases done; see docs/design.md section 17 for what is built and what is not (docking, column groups, tree rows, document text selection, trigram index, bidi). Apps: `gloomy_demo` (widget gallery), `gloomy_showcase` (X-conomy market screen over 1M rows, contract, overview panels, Ctrl+K/Ctrl+P finder), `gloomy_bench` (frame times, docs/design.md section 14.1).
 
 ## Build and test
 
@@ -14,6 +14,11 @@ cmake --build build-debug -j4 && ctest --test-dir build-debug -j4
 # Headless screenshot of the demo (any Vulkan device, lavapipe shown):
 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
     ./build-debug/src/apps/demo/gloomy_demo --screenshot /tmp/demo.png
+# Release build, showcase screenshots (--tab 0..2, --finder "query"), bench:
+cmake -B build-release -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -G Ninja
+cmake --build build-release -j4
+./build-release/src/apps/showcase/gloomy_showcase --tab 2 --screenshot /tmp/s.png
+./build-release/src/apps/bench/gloomy_bench   # GPU; VK_ICD_FILENAMES for lavapipe
 ```
 
 - GPU tests run on lavapipe: ctest sets `VK_ICD_FILENAMES` from the cache variable `GL_TEST_ICD` (`tests/CMakeLists.txt`); empty means the system default device.
@@ -31,6 +36,8 @@ Like X-conomy: public headers `include/gloomy/<module>/`, implementation `src/gl
 - Device ownership vs. UI rendering: `gfx::DeviceContext` (`Create` or `Wrap` a host device), `gfx::UiRenderer` (`Prepare` outside, `Draw` inside the caller's dynamic rendering), `gfx::OffscreenTarget`, `gfx::Swapchain`.
 - UI frame model: `ui::Context` (`include/gloomy/ui/context.h`): immediate-mode declaration into a per-frame node tree; input resolves against the previous frame's layout (`ProcessEvents`, `HitTest`); results are swapped in at the end of `EndFrame()`; per-id state via `State<T>(id)`; overlay layers (`BeginLayer`: popup, tooltip, modal). Layout engine: `ui::LayoutTree` (`src/gloomy/ui/layout.cc`, Clay-style passes). Widgets: `include/gloomy/ui/widgets.h`. Themes: `src/gloomy/ui/theme.cc`.
 - Data layer (`include/gloomy/data/`): `TableSource` (typed access, `Explain`), `ColumnarTable`, `FunctionTable` (zero-copy adapter for SoA), `Query`/`Execute` (`src/gloomy/data/query.cc`: filters, parallel multi-key sort, narrowing/resort/cache paths), `SearchCorpus` (`src/gloomy/data/search.cc`), `TableView` (`src/gloomy/data/table_view.cc`: sync below 50k rows, else worker thread with cancellation), `Document` (Markdown subset, `src/gloomy/data/document.cc`).
+- Answer-first widgets (design section 2): `include/gloomy/ui/summary.h` (ExplainedLabel, Sparkline, SummaryCard, SummaryPanel, AnswerLine), `include/gloomy/ui/view_preset.h` (presets, encode/decode, PresetBar), `include/gloomy/ui/navigation.h` (NavigationTarget, Navigate, NavigationProvider). Finder (palette + global search): `src/gloomy/ui/finder.cc`. Menus, dialogs, toasts, split panes: `src/gloomy/ui/overlays.cc`.
+- Grouping: `Query::group_by`/`aggregates`, `BuildGroups` (`src/gloomy/data/query.cc`), `DisplayRows` (`src/gloomy/data/display_rows.cc`); the grid works on display lines (`LineRow`, `LineKey` in `src/gloomy/ui/data_grid.cc`). Append-only sources: `ExecuteAppend`.
 - Data widgets: `ui::DataGrid` (`src/gloomy/ui/data_grid.cc`: `HandleKeys`, `HandlePointer`, `PaintGrid`, `HeaderMenu`), `ui::DocumentView` (`src/gloomy/ui/document_view.cc`, Fenwick tree over block heights), `ui::SearchField` (`src/gloomy/ui/widgets.cc`). Rich text layout: `text::LayoutRich` (`src/gloomy/text/rich_layout.cc`).
 - Headless UI tests drive a `testing::UiHarness` (`tests/test_support/ui_harness.h`) with synthetic events; no GPU needed. SDL event translation: `platform::TranslateEvent` (`src/gloomy/platform/sdl_window.cc`).
 - Text: `text::FontSet` (faces, fallback chains), `text::Shaper` (HarfBuzz, font fallback runs, clusters = byte offsets), `text::GlyphCache` (FreeType coverage bitmaps, 4 subpixel bins, into `core::Atlas`), `text::TextSystem` (shape cache, wrap, draw).

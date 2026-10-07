@@ -49,10 +49,11 @@ TEST(SwapchainTest, RendersPresentsAndResizes) {
   }
   Atlas atlas(256, 1);
   Swapchain swapchain(*ctx, {320, 200});
-  UiRenderer renderer(*ctx, swapchain.format(), atlas,
-                      Swapchain::kFramesInFlight);
+  UiRenderer renderer(
+      *ctx, swapchain.format(), atlas, Swapchain::kFramesInFlight);
   DrawList list;
-  list.FillRect(Rect::FromXywh(10, 10, 100, 50), Color::Rgb(0x4C8DF6),
+  list.FillRect(Rect::FromXywh(10, 10, 100, 50),
+                Color::Rgb(0x4C8DF6),
                 CornerRadii::All(6));
   const std::array<const DrawList *, 1> lists{&list};
   int presented = 0;

@@ -41,7 +41,7 @@ auto main(int argc, char **argv) -> int {
   gloomy::apps::ParseShellArgs(argc, argv, options);
   options.settled = [&] {
     return !state.view->busy() && !state.answer_view->busy() &&
-           !state.station_search->busy();
+           !state.shortage_view->busy() && !state.station_search->busy();
   };
   return gloomy::apps::RunApp(options);
 }

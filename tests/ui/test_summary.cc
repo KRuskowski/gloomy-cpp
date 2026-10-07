@@ -4,6 +4,7 @@
 
 #include <vector>
 
+#include "gloomy/ui/navigation.h"
 #include "gloomy/ui/view_preset.h"
 #include "gloomy/ui/widgets.h"
 #include "test_support/market_table.h"
@@ -80,6 +81,106 @@ TEST(SummaryTest, AnswerLineAction) {
   });
   h.Frame(ui, UiHarness::Click(h.Center(button)));
   EXPECT_TRUE(act);
+}
+
+// A map the app draws itself, navigable and searchable like a list.
+class FakeMap : public NavigationTarget {
+ public:
+  std::vector<std::string> sectors{"Argon Prime",
+                                   "Ore Belt",
+                                   "Red Light",
+                                   "Ore Mines",
+                                   "Cloudbase"};
+  std::int64_t cursor = -1;
+  std::int64_t activated = -1;
+
+  auto ItemCount() const -> std::int64_t override {
+    return static_cast<std::int64_t>(sectors.size());
+  }
+
+  auto Cursor() const -> std::int64_t override { return cursor; }
+
+  void SetCursor(std::int64_t i) override { cursor = i; }
+
+  void Activate(std::int64_t i) override { activated = i; }
+
+  auto ItemLabel(std::int64_t i) const -> std::string override {
+    return sectors[static_cast<std::size_t>(i)];
+  }
+};
+
+TEST(NavigationTest, SameKeysAsLists) {
+  UiHarness h;
+  FakeMap map;
+  NavigationState nav;
+  auto ui = [&](Context &ctx) {
+    NodeDesc node;
+    node.id = ctx.GetId("##map");
+    node.flags = kNodeFocusable | kNodeInteractive;
+    node.layout.width = SizeSpec::Fixed(200);
+    node.layout.height = SizeSpec::Fixed(200);
+    ctx.Open(node);
+    ctx.Close();
+    Navigate(ctx, ctx.GetId("##map"), map, nav);
+  };
+  h.Frame(ui);
+  h.Frame(ui, UiHarness::Key(Key::kTab));
+  h.Frame(ui, UiHarness::Key(Key::kDown));
+  EXPECT_EQ(map.cursor, 0);
+  h.Frame(ui, UiHarness::Key(Key::kEnd));
+  EXPECT_EQ(map.cursor, 4);
+  h.Frame(ui, {InputEvent::Text("o")});
+  EXPECT_EQ(map.cursor, 1) << "type to jump wraps around";
+  h.Frame(ui, {InputEvent::Text("o")});
+  EXPECT_EQ(map.cursor, 3) << "the same letter again: next match";
+  h.Frame(ui, UiHarness::Key(Key::kEnter));
+  EXPECT_EQ(map.activated, 3);
+}
+
+TEST(NavigationTest, MapIsSearchable) {
+  FakeMap map;
+  NavigationProvider provider("Map", map);
+  provider.SetQuery("ore");
+  EXPECT_EQ(provider.count(), 2U);
+  std::vector<SearchHit> hits;
+  provider.Collect(10, hits);
+  ASSERT_EQ(hits.size(), 2U);
+  EXPECT_EQ(hits[1].label, "Ore Mines");
+  hits[1].go();
+  EXPECT_EQ(map.cursor, 3);
+}
+
+TEST(SummaryPanelTest, ShowsTopRowsAndDrills) {
+  UiHarness h({800, 500});
+  auto table = std::make_shared<testing::MarketTable>(300);
+  data::TableView view(table);
+  data::Query q;
+  q.sort = {{4, data::SortDirection::kAscending}};
+  view.SetQuery(q);
+  view.Update();
+  const KeyNumber numbers[] = {{"Offers", {"300", ""}},
+                               {"Cheapest", {"10.04 Cr", "Surplus"}}};
+  const int columns[] = {0, 1, 4};
+  bool drill = false;
+  auto ui = [&](Context &ctx) {
+    SummaryPanelSpec spec;
+    spec.title = "Cheapest offers";
+    spec.numbers = numbers;
+    spec.columns = columns;
+    spec.rows = 4;
+    drill = SummaryPanel(ctx, "##panel", view, spec);
+  };
+  h.Frame(ui);
+  EXPECT_LT(h.ctx().node_count(), 60);
+  Id button = kNoId;
+  h.Frame([&](Context &ctx) {
+    ui(ctx);
+    ctx.PushId(ctx.GetId("##panel"));
+    button = ctx.GetId("Open table");
+    ctx.PopId();
+  });
+  h.Frame(ui, UiHarness::Click(h.Center(button)));
+  EXPECT_TRUE(drill);
 }
 
 TEST(ViewPresetTest, EncodeDecodeRoundTrip) {

@@ -243,4 +243,130 @@ auto AnswerLine(Context &ctx, std::string_view label, std::string_view answer,
   return act;
 }
 
+auto SummaryPanel(Context &ctx, std::string_view label,
+                  const data::TableView &view, const SummaryPanelSpec &spec)
+    -> bool {
+  const Theme &t = ctx.theme();
+  const Id id = ctx.GetId(label);
+  bool drill = false;
+  if (ctx.HasFocus(id) && ctx.ConsumeKey(Key::kEnter)) {
+    drill = true;
+  }
+  NodeDesc panel;
+  panel.id = id;
+  panel.layout.mode = LayoutMode::kColumn;
+  panel.layout.width = SizeSpec::Grow();
+  panel.layout.padding = Padding::All(12);
+  panel.layout.gap = 8;
+  panel.layout.align = Align::kStretch;
+  panel.style.fill = t.colors.surface;
+  panel.style.border = t.colors.border;
+  panel.style.border_width = t.metrics.border_width;
+  panel.style.radii = gfx::CornerRadii::All(t.metrics.radius + 2);
+  panel.flags = kNodeFocusable | kNodeFocusRing;
+  ctx.Open(panel);
+  ctx.PushId(id);
+  Heading(ctx, spec.title);
+  if (!spec.numbers.empty()) {
+    LayoutSpec numbers;
+    numbers.gap = 20;
+    BeginRow(ctx, numbers);
+    for (std::size_t i = 0; i < spec.numbers.size(); ++i) {
+      const KeyNumber &k = spec.numbers[i];
+      LayoutSpec col;
+      col.gap = 2;
+      BeginColumn(ctx, col);
+      LabelOptions name;
+      name.muted = true;
+      name.size = t.metrics.small_font_size + 1;
+      Label(ctx, k.label, name);
+      ExplainedLabel(ctx, "##k" + std::to_string(i), k.value, k.tone);
+      End(ctx);
+    }
+    End(ctx);
+  }
+  // Compact table of the first rows.
+  const data::TableSource &src = view.source();
+  const auto rows = view.rows();
+  const auto infos = src.Columns();
+  LayoutSpec table;
+  table.gap = 0;
+  table.align = Align::kStretch;
+  BeginColumn(ctx, table);
+  float weights = 0.0F;
+  for (const int col : spec.columns) {
+    weights += infos[col].IsNumeric() ? 1.0F : 2.0F;
+  }
+  // The gaps take a little; leave them out of the shares.
+  const float usable = 0.97F;
+  auto Share = [&](const data::ColumnInfo &info) {
+    return usable * (info.IsNumeric() ? 1.0F : 2.0F) / weights;
+  };
+  auto row_of_cells = [&](auto &&cell_text, bool header, bool stripe) {
+    NodeDesc row;
+    row.layout.mode = LayoutMode::kRow;
+    row.layout.height = SizeSpec::Fixed(t.metrics.row_height);
+    row.layout.padding = Padding::Xy(6, 0);
+    row.layout.gap = 0;
+    row.layout.align = Align::kCenter;
+    if (stripe) {
+      row.style.fill = t.colors.surface_alt;
+    }
+    ctx.Open(row);
+    for (std::size_t c = 0; c < spec.columns.size(); ++c) {
+      const data::ColumnInfo &info = infos[spec.columns[c]];
+      TextSpec text;
+      const std::string value = cell_text(spec.columns[c]);
+      text.text = value;
+      text.font = header ? t.fonts.bold : t.fonts.sans;
+      text.size = header ? t.metrics.small_font_size + 1 : t.metrics.font_size;
+      text.color = header ? t.colors.text_muted : t.colors.text;
+      text.align = info.IsNumeric() ? TextAlign::kRight : TextAlign::kLeft;
+      // Fixed shares keep columns aligned across rows; text columns get
+      // twice the room of numbers.
+      LayoutSpec cell;
+      cell.width = SizeSpec::Percent(Share(info));
+      ctx.Text(text, cell);
+    }
+    ctx.Close();
+  };
+  row_of_cells([&](int col) { return infos[col].title; }, true, false);
+  std::string cell;
+  for (int r = 0; r < spec.rows && r < static_cast<int>(rows.size()); ++r) {
+    const data::RowIndex row = rows[static_cast<std::size_t>(r)];
+    row_of_cells(
+        [&](int col) {
+          src.FormatCell(row, col, cell);
+          return cell;
+        },
+        false,
+        r % 2 == 1);
+  }
+  End(ctx);
+  LayoutSpec foot;
+  foot.align = Align::kCenter;
+  foot.width = SizeSpec::Grow();
+  BeginRow(ctx, foot);
+  LabelOptions more;
+  more.muted = true;
+  more.size = t.metrics.small_font_size + 1;
+  const std::int64_t rest = static_cast<std::int64_t>(rows.size()) - spec.rows;
+  std::string more_text;
+  if (view.busy()) {
+    more_text = "Updating\xE2\x80\xA6";
+  } else if (rest > 0) {
+    data::FormatInt(rest, true, more_text);
+    more_text += " more";
+  }
+  Label(ctx, more_text, more);
+  Spacer(ctx);
+  if (Button(ctx, spec.action, ButtonKind::kFlat)) {
+    drill = true;
+  }
+  End(ctx);
+  ctx.PopId();
+  ctx.Close();
+  return drill;
+}
+
 }  // namespace gloomy::ui

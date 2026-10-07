@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "gloomy/data/table_view.h"
 #include "gloomy/ui/context.h"
 
 namespace gloomy::ui {
@@ -58,6 +59,32 @@ auto SummaryCard(Context &ctx, std::string_view label, const SummarySpec &spec)
 /// action. @return True when the action is taken (click, Enter).
 auto AnswerLine(Context &ctx, std::string_view label, std::string_view answer,
                 std::string_view reason, std::string_view action) -> bool;
+
+/// A labelled key number for a SummaryPanel.
+struct KeyNumber {
+  std::string_view label;
+  ExplainedValue value;
+  Tone tone = Tone::kNeutral;
+};
+
+/// The panel level between a glance card and the full table.
+struct SummaryPanelSpec {
+  std::string_view title;
+  std::span<const KeyNumber> numbers;
+  /// Source columns of the compact table.
+  std::span<const int> columns;
+  /// Rows of the view shown (its first rows: the top of the answer).
+  int rows = 5;
+  std::string_view action = "Open table";
+};
+
+/// A panel: title, key numbers, a compact table of the view's first rows
+/// and one action that opens the full table (docs/design.md section 2.2).
+/// @return True when the user drills down (the action, or Enter on the
+///     focused panel).
+auto SummaryPanel(Context &ctx, std::string_view label,
+                  const data::TableView &view, const SummaryPanelSpec &spec)
+    -> bool;
 
 /// Colour of a tone in the current theme (text colour for neutral).
 auto ToneColor(const Theme &theme, Tone tone) -> Color;

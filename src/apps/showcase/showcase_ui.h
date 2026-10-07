@@ -24,6 +24,8 @@ struct ShowcaseState {
   std::unique_ptr<data::TableView> view;
   /// The query behind the answer line (row one is the answer).
   std::unique_ptr<data::TableView> answer_view;
+  /// Behind the "Shortages" panel.
+  std::unique_ptr<data::TableView> shortage_view;
   ui::GridState grid;
   std::vector<ui::ViewPreset> presets;
   int preset = 0;
