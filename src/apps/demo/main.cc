@@ -1,73 +1,55 @@
-// gloomy_demo: draws a small scene in a window, or headless into a PNG.
+// gloomy_demo: the widget gallery in a window, or headless into a PNG.
 //
-//   gloomy_demo                       open a window (SDL2)
-//   gloomy_demo --screenshot out.png  render offscreen and exit
+//   gloomy_demo                          open a window (SDL2)
+//   gloomy_demo --screenshot out.png     render offscreen and exit
+//   gloomy_demo --size 960x600           window or screenshot size
 
-#include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
+#include "demo_ui.h"
 #include "gloomy/core/atlas.h"
 #include "gloomy/gfx/device_context.h"
-#include "gloomy/gfx/draw_list.h"
 #include "gloomy/gfx/offscreen_target.h"
 #include "gloomy/gfx/swapchain.h"
 #include "gloomy/gfx/ui_renderer.h"
 #include "gloomy/text/font_set.h"
 #include "gloomy/text/text_renderer.h"
+#include "gloomy/ui/context.h"
+#include "gloomy/ui/theme.h"
 
 #ifdef GLOOMY_HAVE_SDL2
-#include <SDL.h>
-
 #include "gloomy/platform/sdl_window.h"
 #endif
 
 namespace {
 
-using gloomy::Color;
-using gloomy::Rect;
+using gloomy::demo::DemoState;
 
-void DrawScene(gloomy::gfx::DrawList &list, gloomy::text::TextSystem &text,
-               const gloomy::text::DefaultFonts &fonts, float width,
-               float height) {
-  list.Clear();
-  const Rect panel{16, 16, width - 16, height - 16};
-  list.Shadow(panel,
-              Color::Rgba(0x00000080),
-              12,
-              {0, 6},
-              gloomy::gfx::CornerRadii::All(10));
-  list.FillRect(panel, Color::Rgb(0x313244), gloomy::gfx::CornerRadii::All(10));
-  list.StrokeRect(
-      panel, Color::Rgb(0x45475A), 1, gloomy::gfx::CornerRadii::All(10));
-  text.DrawText(
-      list, "gloomy-cpp", fonts.bold, 22, {32, 28}, Color::Rgb(0x89B4FA));
-  text.DrawText(list,
-                "Raw Vulkan, SDF primitives, HarfBuzz text",
-                fonts.sans,
-                14,
-                {32, 60},
-                Color::Rgb(0xCDD6F4));
-  float y = 96;
-  for (int row = 0; row < 8; ++row) {
-    const Rect r{32, y, width - 32, y + 24};
-    if (row % 2 == 1) {
-      list.FillRect(r, Color::Rgb(0x2A2B3C));
-    }
-    char line[96];
-    std::snprintf(line,
-                  sizeof(line),
-                  "Station %02d   Ore   %7d Cr",
-                  row + 1,
-                  1200 + row * 137);
-    text.DrawText(
-        list, line, fonts.mono, 13, {40, y + 4}, Color::Rgb(0xBAC2DE));
-    y += 24;
+// Applies the theme picked in the demo UI.
+void SyncTheme(gloomy::ui::Context &ctx, const gloomy::text::DefaultFonts &f,
+               int theme) {
+  const char *names[] = {"Dark", "Light", "High Contrast"};
+  if (ctx.theme().name == names[theme]) {
+    return;
+  }
+  switch (theme) {
+    case 1:
+      ctx.SetTheme(gloomy::ui::Theme::Light(f));
+      break;
+    case 2:
+      ctx.SetTheme(gloomy::ui::Theme::HighContrast(f));
+      break;
+    default:
+      ctx.SetTheme(gloomy::ui::Theme::Dark(f));
+      break;
   }
 }
 
-auto Screenshot(const std::string &path) -> int {
+auto Screenshot(const std::string &path, VkExtent2D size) -> int {
   gloomy::gfx::DeviceOptions options;
   options.validation = true;
   auto ctx = gloomy::gfx::DeviceContext::Create(options);
@@ -80,14 +62,20 @@ auto Screenshot(const std::string &path) -> int {
   const gloomy::text::DefaultFonts ids = fonts.AddDefaultFonts();
   gloomy::Atlas atlas(1024, 4);
   gloomy::text::TextSystem text(fonts, atlas);
+  gloomy::ui::Context ui(text, gloomy::ui::Theme::Dark(ids));
+  DemoState state;
+  const gloomy::Vec2 viewport{static_cast<float>(size.width),
+                              static_cast<float>(size.height)};
+  for (int frame = 0; frame < 3; ++frame) {
+    ui.BeginFrame(viewport, {}, frame / 60.0);
+    gloomy::demo::DemoUi(ui, state);
+    ui.EndFrame();
+  }
   gloomy::gfx::UiRenderer renderer(
       **ctx, gloomy::gfx::OffscreenTarget::kFormat, atlas);
-  gloomy::gfx::OffscreenTarget target(**ctx, {480, 320});
-  gloomy::gfx::DrawList list;
-  DrawScene(list, text, ids, 480, 320);
-  const std::array<const gloomy::gfx::DrawList *, 1> lists{&list};
+  gloomy::gfx::OffscreenTarget target(**ctx, size);
   const gloomy::Image image = gloomy::gfx::RenderToImage(
-      **ctx, renderer, target, lists, Color::Rgb(0x1E1E2E));
+      **ctx, renderer, target, ui.draw_lists(), ui.theme().colors.background);
   if (auto saved = gloomy::SavePng(image, path); !saved) {
     std::fprintf(stderr, "%s\n", saved.error().c_str());
     return 1;
@@ -96,8 +84,11 @@ auto Screenshot(const std::string &path) -> int {
 }
 
 #ifdef GLOOMY_HAVE_SDL2
-auto RunWindow() -> int {
-  auto window = gloomy::platform::SdlWindow::Create("gloomy demo", 960, 640);
+auto RunWindow(VkExtent2D size) -> int {
+  auto window =
+      gloomy::platform::SdlWindow::Create("gloomy demo",
+                                          static_cast<int>(size.width),
+                                          static_cast<int>(size.height));
   if (!window) {
     std::fprintf(stderr, "%s\n", window.error().c_str());
     return 1;
@@ -117,35 +108,37 @@ auto RunWindow() -> int {
   const gloomy::text::DefaultFonts ids = fonts.AddDefaultFonts();
   gloomy::Atlas atlas(1024, 4);
   gloomy::text::TextSystem text(fonts, atlas);
+  gloomy::ui::Context ui(text, gloomy::ui::Theme::Dark(ids));
+  gloomy::platform::SdlWindow::InstallClipboard(ui);
   gloomy::gfx::Swapchain swapchain(**ctx, (*window)->DrawableExtent());
   gloomy::gfx::UiRenderer renderer(**ctx,
                                    swapchain.format(),
                                    atlas,
                                    gloomy::gfx::Swapchain::kFramesInFlight);
-  gloomy::gfx::DrawList list;
+  DemoState state;
+  const auto start = std::chrono::steady_clock::now();
+  std::vector<gloomy::ui::InputEvent> events;
   bool running = true;
   while (running) {
-    SDL_Event event;
-    while (SDL_PollEvent(&event) != 0) {
-      if (event.type == SDL_QUIT) {
-        running = false;
-      }
-    }
+    events.clear();
+    running = (*window)->PollEvents(events);
     const VkExtent2D extent = (*window)->DrawableExtent();
     auto frame = swapchain.BeginFrame(extent);
     if (!frame) {
-      SDL_Delay(10);
       continue;
     }
-    text.BeginFrame();
-    DrawScene(list,
-              text,
-              ids,
-              static_cast<float>(frame->extent.width),
-              static_cast<float>(frame->extent.height));
-    const std::array<const gloomy::gfx::DrawList *, 1> lists{&list};
-    renderer.Prepare(frame->cmd, frame->slot, lists);
-    swapchain.BeginRendering(Color::Rgb(0x1E1E2E));
+    const double now =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
+    SyncTheme(ui, ids, state.theme);
+    ui.BeginFrame({static_cast<float>(frame->extent.width),
+                   static_cast<float>(frame->extent.height)},
+                  events,
+                  now);
+    gloomy::demo::DemoUi(ui, state);
+    ui.EndFrame();
+    renderer.Prepare(frame->cmd, frame->slot, ui.draw_lists());
+    swapchain.BeginRendering(ui.theme().colors.background);
     renderer.Draw(frame->cmd, frame->slot, frame->extent);
     swapchain.EndFrame();
   }
@@ -156,13 +149,24 @@ auto RunWindow() -> int {
 }  // namespace
 
 auto main(int argc, char **argv) -> int {
+  VkExtent2D size{960, 600};
+  std::string screenshot;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
-      return Screenshot(argv[i + 1]);
+      screenshot = argv[++i];
+    } else if (std::strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
+      unsigned w = 0;
+      unsigned h = 0;
+      if (std::sscanf(argv[++i], "%ux%u", &w, &h) == 2) {
+        size = {w, h};
+      }
     }
   }
+  if (!screenshot.empty()) {
+    return Screenshot(screenshot, size);
+  }
 #ifdef GLOOMY_HAVE_SDL2
-  return RunWindow();
+  return RunWindow(size);
 #else
   std::fprintf(stderr, "built without SDL2; use --screenshot <file.png>\n");
   return 1;

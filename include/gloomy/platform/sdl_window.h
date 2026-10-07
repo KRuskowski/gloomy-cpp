@@ -5,10 +5,15 @@
 
 #include <expected>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "gloomy/ui/context.h"
+#include "gloomy/ui/input.h"
+
 struct SDL_Window;
+union SDL_Event;
 
 namespace gloomy::platform {
 
@@ -33,6 +38,16 @@ class SdlWindow {
   /// Size of the drawable area in pixels.
   auto DrawableExtent() const -> VkExtent2D;
 
+  /// Drains SDL's event queue into `out`.
+  /// @return False when the window was asked to close.
+  auto PollEvents(std::vector<ui::InputEvent> &out) -> bool;
+
+  /// Pixels per window coordinate (HiDPI).
+  auto PixelScale() const -> float;
+
+  /// Routes the context's clipboard to the system clipboard.
+  static void InstallClipboard(ui::Context &ctx);
+
   auto window() const -> SDL_Window * { return window_; }
 
  private:
@@ -40,6 +55,11 @@ class SdlWindow {
 
   SDL_Window *window_;
 };
+
+/// Translates one SDL event; std::nullopt for events the UI ignores.
+/// @param[in] scale Pixels per window coordinate.
+auto TranslateEvent(const SDL_Event &event, float scale)
+    -> std::optional<ui::InputEvent>;
 
 }  // namespace gloomy::platform
 

@@ -41,10 +41,18 @@ add_library(GlText OBJECT
   src/gloomy/text/text_renderer.cc
 )
 
+add_library(GlUi OBJECT
+  src/gloomy/ui/context.cc
+  src/gloomy/ui/layout.cc
+  src/gloomy/ui/theme.cc
+  src/gloomy/ui/widgets.cc
+)
+
 set(gl_module_names
   GlCore
   GlGfx
   GlText
+  GlUi
 )
 
 set(gl_module_object_files)

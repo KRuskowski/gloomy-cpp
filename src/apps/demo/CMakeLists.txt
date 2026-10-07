@@ -1,4 +1,5 @@
 add_executable(gloomy_demo
+  demo_ui.cc
   main.cc
 )
 target_link_libraries(gloomy_demo
