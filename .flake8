@@ -1,0 +1,38 @@
+# House style for Python in this repository.
+#
+# PEP 8, with exactly one deliberate exception.
+#
+# The exception: E302 and E305 are off. PEP 8 asks for two blank lines
+# before and after every top-level definition; this project uses one.
+# That is a standing instruction, not an oversight, and it is the only
+# place house style and PEP 8 disagree. Everything else PEP 8 says
+# applies -- 79 columns, four-space indent, no trailing whitespace, a
+# newline at end of file.
+#
+# Enforced by ctest as PythonStyleGuard.EveryPythonFileFollowsHouseStyle
+# (tests/cmake/python_style.cmake). The gate reads this file, so the two
+# cannot drift: change the policy here and the gate changes with it.
+#
+# Scope. The gate covers every .py file the project owns -- bindings,
+# examples, docs, scripts, tools and tests. Not external/ or platform/,
+# which are vendored and not ours to hold to this, and not build trees,
+# which contain generated SWIG output. The exclude key below is the one
+# copy of that boundary: the gate reads it from here.
+
+[flake8]
+max-line-length = 79
+
+# E302: expected 2 blank lines, got 1     -- house style is 1.
+# E305: expected 2 blank lines after ...  -- same rule, other side.
+extend-ignore = E302, E305
+
+exclude =
+    .git,
+    __pycache__,
+    build,
+    build-*,
+    external,
+    platform,
+    _deps,
+    *.egg-info,
+    .venv

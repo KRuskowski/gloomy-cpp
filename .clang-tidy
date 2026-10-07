@@ -1,0 +1,17 @@
+---
+Checks: '
+  -*,
+  bugprone-*,
+  google-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -google-build-using-namespace,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length
+'
+WarningsAsErrors: ''
+HeaderFilterRegex: 'src/.*|include/.*'
+FormatStyle: Google
+---
