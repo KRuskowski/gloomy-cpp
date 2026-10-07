@@ -232,6 +232,31 @@ auto TextTop(const DocBlock &b) -> float {
   return box.top + (b.kind == BlockKind::kCode ? box.indent : 0.0F);
 }
 
+// The document position under `local` (relative to the view's top-left),
+// for blocks that are laid out (visible ones).
+auto PositionAt(const data::Document &doc, const DocumentViewState &st,
+                Vec2 local) -> std::optional<DocPosition> {
+  if (st.fenwick.size() <= 1) {
+    return std::nullopt;
+  }
+  const double y = st.scroll + local.y;
+  const auto b = static_cast<std::uint32_t>(FenwickFind(st.fenwick, y));
+  const auto found = st.layouts.find(b);
+  if (found == st.layouts.end()) {
+    return DocPosition{b, 0};
+  }
+  const DocBlock &block = doc.blocks()[b];
+  const float local_y =
+      static_cast<float>(y - FenwickPrefix(st.fenwick, b) - TextTop(block));
+  const float indent =
+      BoxOf(block).indent * (block.kind == BlockKind::kCode ? 2.0F : 1.0F);
+  if (local_y < 0.0F) {
+    return DocPosition{b, 0};
+  }
+  return DocPosition{b,
+                     found->second.ByteAt({local.x - kPad - indent, local_y})};
+}
+
 void PaintDocument(PaintContext &pc, const Rect &r, const data::Document &doc,
                    const DocumentViewState &st) {
   const Palette &c = pc.theme.colors;
@@ -306,6 +331,20 @@ void PaintDocument(PaintContext &pc, const Rect &r, const data::Document &doc,
         break;
     }
     const float lx = block.kind == BlockKind::kCode ? x0 + box.indent : x0;
+    // The selection.
+    if (st.sel_anchor && st.sel_focus && *st.sel_anchor != *st.sel_focus) {
+      const DocPosition a = std::min(*st.sel_anchor, *st.sel_focus);
+      const DocPosition z = std::max(*st.sel_anchor, *st.sel_focus);
+      if (b >= a.block && b <= z.block) {
+        const std::uint32_t begin = b == a.block ? a.byte : 0;
+        const std::uint32_t end =
+            b == z.block ? z.byte
+                         : static_cast<std::uint32_t>(block.text.size()) + 1;
+        for (const Rect &sr : layout.RangeRects(begin, end)) {
+          list.FillRect(sr.Offset({lx, text_y}), c.selection);
+        }
+      }
+    }
     // Search highlights; the current match stronger and outlined.
     for (std::size_t m = 0; m < st.matches.size(); ++m) {
       const data::DocMatch &match = st.matches[m];
@@ -333,6 +372,30 @@ void PaintDocument(PaintContext &pc, const Rect &r, const data::Document &doc,
 }
 
 }  // namespace
+
+auto SelectedText(const data::Document &doc, const DocumentViewState &state)
+    -> std::string {
+  if (!state.sel_anchor || !state.sel_focus ||
+      *state.sel_anchor == *state.sel_focus) {
+    return {};
+  }
+  const DocPosition a = std::min(*state.sel_anchor, *state.sel_focus);
+  const DocPosition b = std::max(*state.sel_anchor, *state.sel_focus);
+  std::string out;
+  for (std::uint32_t block = a.block; block <= b.block && block < doc.size();
+       ++block) {
+    const std::string &text = doc.blocks()[block].text;
+    const std::uint32_t begin = block == a.block ? a.byte : 0;
+    const std::uint32_t end =
+        block == b.block ? b.byte : static_cast<std::uint32_t>(text.size());
+    if (!out.empty() || block != a.block) {
+      out += "\n\n";
+    }
+    out += text.substr(std::min<std::size_t>(begin, text.size()),
+                       end > begin ? end - begin : 0);
+  }
+  return out;
+}
 
 auto TopBlock(const DocumentViewState &state) -> std::uint32_t {
   if (state.fenwick.size() <= 1) {
@@ -484,24 +547,57 @@ auto DocumentView(Context &ctx, std::string_view label,
     }
   }
 
-  // Links.
-  if (it.clicked && doc.size() > 0) {
-    const double y = st.scroll + it.local.y;
-    const auto b = static_cast<std::uint32_t>(FenwickFind(st.fenwick, y));
-    auto found = st.layouts.find(b);
-    if (found != st.layouts.end()) {
-      const DocBlock &block = doc.blocks()[b];
-      const float local_y =
-          static_cast<float>(y - FenwickPrefix(st.fenwick, b) - TextTop(block));
-      const float indent =
-          BoxOf(block).indent * (block.kind == BlockKind::kCode ? 2.0F : 1.0F);
-      const std::uint32_t byte =
-          found->second.ByteAt({it.local.x - kPad - indent, local_y});
-      for (const data::DocSpan &s : block.spans) {
-        if (!s.link.empty() && byte >= s.begin && byte < s.end) {
-          result.link = s.link;
+  // Selection by dragging; a click without a drag follows links.
+  if (doc.size() > 0 && (it.pressed || it.clicked)) {
+    if (!st.selecting) {
+      st.selecting = true;
+      st.sel_anchor = PositionAt(doc, st, ctx.press_pos() - rect.Min());
+      st.sel_focus = st.sel_anchor;
+      ctx.SetFocus(id, false);
+    }
+    const Vec2 local = ctx.mouse() - rect.Min();
+    // Dragging past the edges scrolls.
+    if (it.pressed && local.y < 0) {
+      st.scroll -= kLineScroll / 2;
+    } else if (it.pressed && local.y > rect.Height()) {
+      st.scroll += kLineScroll / 2;
+    }
+    st.sel_focus = PositionAt(
+        doc, st, {local.x, std::clamp(local.y, 0.0F, rect.Height() - 1)});
+  }
+  if (!it.pressed && st.selecting) {
+    st.selecting = false;
+    if (st.sel_anchor == st.sel_focus) {
+      // A click: no selection; maybe a link.
+      if (st.sel_anchor) {
+        const DocBlock &block = doc.blocks()[st.sel_anchor->block];
+        for (const data::DocSpan &s : block.spans) {
+          if (!s.link.empty() && st.sel_anchor->byte >= s.begin &&
+              st.sel_anchor->byte < s.end) {
+            result.link = s.link;
+          }
         }
       }
+      st.sel_anchor.reset();
+      st.sel_focus.reset();
+    }
+  }
+  if (ctx.HasFocus(id)) {
+    if (ctx.ConsumeKey(Key::kA, kModCtrl) && doc.size() > 0) {
+      st.sel_anchor = DocPosition{0, 0};
+      st.sel_focus = DocPosition{
+          doc.size() - 1,
+          static_cast<std::uint32_t>(doc.blocks().back().text.size())};
+    }
+    if (ctx.ConsumeKey(Key::kC, kModCtrl)) {
+      const std::string text = SelectedText(doc, st);
+      if (!text.empty()) {
+        ctx.clipboard().set(text);
+      }
+    }
+    if (st.sel_anchor && ctx.ConsumeKey(Key::kEscape)) {
+      st.sel_anchor.reset();
+      st.sel_focus.reset();
     }
   }
 

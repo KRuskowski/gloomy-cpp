@@ -109,6 +109,27 @@ TEST_F(DocumentViewTest, LinkClickReportsTarget) {
   EXPECT_TRUE(found);
 }
 
+TEST_F(DocumentViewTest, DragSelectsAndCopies) {
+  Frame();
+  Frame();
+  const Rect r = h_.ctx().LastRect(h_.ctx().GetId("##contract")).value();
+  // From the start of the title down into the next paragraph.
+  const Vec2 a{r.x0 + 17, r.y0 + 12};
+  const Vec2 b{r.x0 + 200, r.y0 + 70};
+  Frame({InputEvent::Move(a.x, a.y), InputEvent::Down(a.x, a.y)});
+  Frame({InputEvent::Move(b.x, b.y)});
+  Frame({InputEvent::Up(b.x, b.y)});
+  const std::string text = SelectedText(doc_, state_);
+  EXPECT_TRUE(text.starts_with("Supply Contract 42\n\nBetween")) << text;
+  Frame(UiHarness::Key(Key::kC, kModCtrl));
+  EXPECT_EQ(h_.ctx().clipboard().get(), text);
+  Frame(UiHarness::Key(Key::kEscape));
+  EXPECT_TRUE(SelectedText(doc_, state_).empty());
+  Frame(UiHarness::Key(Key::kA, kModCtrl));
+  Frame(UiHarness::Key(Key::kC, kModCtrl));
+  EXPECT_TRUE(h_.ctx().clipboard().get().ends_with("settled weekly."));
+}
+
 class DocumentImageTest : public testing::GpuTest {};
 
 TEST_F(DocumentImageTest, ContractMatchesReference) {
@@ -130,6 +151,9 @@ TEST_F(DocumentImageTest, ContractMatchesReference) {
   h.Frame(ui);
   state.scroll = 0;
   GoToMatch(state, false);
+  // A selection from the middle of the first paragraph into the list.
+  state.sel_anchor = DocPosition{1, 8};
+  state.sel_focus = DocPosition{3, 14};
   h.Frame(ui);
   h.Frame(ui);
   gfx::UiRenderer renderer(ctx(), gfx::OffscreenTarget::kFormat, h.atlas());

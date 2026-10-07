@@ -381,5 +381,5 @@ Built:
 - Document view with outline jumps, links, search and highlights; the Finder (command palette and global search over tables, documents and commands).
 - Showcase (`gloomy_showcase`) and benchmark (`gloomy_bench`, section 14.1).
 
-Not built yet: docking workspace (only split panes); column groups, tree rows and right-pinned columns in the grid; text selection in the document view; trigram index; bidirectional text; number, date and time fields; charts beyond sparklines; the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
+Not built yet: docking workspace (only split panes); column groups, tree rows and right-pinned columns in the grid; trigram index; bidirectional text; number, date and time fields; charts beyond sparklines; the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
 
