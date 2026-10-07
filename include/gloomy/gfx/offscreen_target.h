@@ -28,8 +28,9 @@ class OffscreenTarget {
   /// `clear`.
   void Begin(VkCommandBuffer cmd, const Color &clear);
 
-  /// Ends rendering and records the copy into the readback buffer.
-  void End(VkCommandBuffer cmd);
+  /// Ends rendering and, with `readback`, records the copy into the
+  /// readback buffer.
+  void End(VkCommandBuffer cmd, bool readback = true);
 
   /// The pixels of the last completed End(). Call after the submission
   /// finished.

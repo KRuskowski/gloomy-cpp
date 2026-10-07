@@ -202,9 +202,11 @@ class TableSource {
                          std::span<int64_t> out) const;
   virtual void ReadDouble(int col, std::span<const RowIndex> rows,
                           std::span<double> out) const;
-  virtual void ReadText(int col, std::span<const RowIndex> rows,
-                        std::span<std::string_view> out,
-                        TextArena &arena) const;
+  /// Single-cell reads; text views stay valid while the source is
+  /// unchanged.
+  virtual auto GetInt64(int col, RowIndex row) const -> int64_t;
+  virtual auto GetDouble(int col, RowIndex row) const -> double;
+  virtual auto GetText(int col, RowIndex row) const -> std::string_view;
   /// Display text for one cell (formatting, units, thousands separators).
   virtual void FormatCell(RowIndex row, int col, std::string &out) const;
   /// Stable identity of a row across versions, for selection and focus.
@@ -212,16 +214,15 @@ class TableSource {
   /// The "why" behind a cell (section 2.3); false if there is none.
   virtual auto Explain(RowIndex row, int col, Explanation &out) const
       -> bool { return false; }
-  /// Rows appended since `version`, if the source only appends (logs).
-  virtual auto AppendedSince(uint64_t version) const
-      -> std::optional<RowIndex>;
+  /// True if new versions only append rows (logs).
+  virtual auto AppendOnly() const -> bool { return false; }
 };
 ```
 
 `ColumnInfo` names the column, its type, enum labels, an optional parent row column (tree data), whether it is searchable and whether it has explanations. Implementations:
 
 - `ColumnarTable`: owns typed column vectors (`std::vector<int64_t>`, `std::vector<double>`, a text column as one byte blob plus offsets), appends rows, bumps the version. Good for logs and generated data.
-- `SpanTable`: zero-copy adapter over structure-of-arrays the app already has (X-conomy's `World` tables are exactly that): each column is a `std::span` or a callable `(RowIndex) -> value`. Formatting is a per-column callable.
+- `FunctionTable`: zero-copy adapter over structure-of-arrays the app already has (X-conomy's `World` tables are exactly that): each column is a callable `(RowIndex) -> value`, plus optional row keys and explanations.
 
 Batch reads exist so the sort and filter loops call a virtual function once per 4,096-row chunk, not once per cell.
 
@@ -255,10 +256,10 @@ Incrementality, which is what keeps typing and live data smooth:
 
 - Narrowing: if the new query only tightens the old one (a search string extended by a character, a filter made stricter, the same sort), it runs on the previous result instead of all rows, and the sort order is preserved, so no re-sort. Backspace pops a short stack of previous results.
 - Re-sort only: changing the sort reorders the existing filtered rows.
-- Append-only sources: new rows are filtered, sorted among themselves and merged into the view.
+- Append-only sources: new rows are filtered, sorted among themselves and merged into the view (planned; today an appended source is re-queried in the background like any changed source).
 - Value changes (prices every tick): the view is recomputed when the source version changes, but throttled (default at most every 250 ms for large tables), and selection and focus survive because they are kept as `RowKey`s, not positions.
 
-Execution model: a `QueryEngine` runs queries on a small worker pool against `std::shared_ptr<const TableSource>` snapshots. The UI keeps showing the previous `RowView` until the new one is ready (with a subtle busy indicator), then swaps it in at the start of a frame; a newer query cancels an older one at the next chunk boundary. Sources must not change while a snapshot is shared: an app either publishes immutable snapshots (X-conomy can produce per-tick UI tables) or opts into synchronous execution, which tables under about 50,000 rows use anyway because it finishes well within a frame.
+Execution model: each `TableView` (`include/gloomy/data/table_view.h`) owns one worker thread and runs its queries against the shared `std::shared_ptr<const TableSource>`; sorts and corpus builds split further across `WorkerThreads()` (at most 4). The UI keeps showing the previous `RowView` until the new one is ready (with a subtle busy indicator), then swaps it in at the start of a frame; a newer query cancels an older one at the next chunk boundary. Sources must not change while a snapshot is shared: an app either publishes immutable snapshots (X-conomy can produce per-tick UI tables) or opts into synchronous execution, which tables under about 50,000 rows use anyway because it finishes well within a frame.
 
 ### 10.3 Search core
 
@@ -266,8 +267,8 @@ One search core serves tables, documents and global search:
 
 - `SearchCorpus`: a list of documents, each a span of normalised text (UTF-8, case-folded, same byte length as the original so offsets map back one to one) stored in one contiguous blob with an offsets array, plus per-document segment boundaries (which column of a row, which block of a document). A table corpus has one document per row with the searchable columns concatenated with a separator; a document corpus has one per paragraph.
 - Matching is literal case-insensitive substring search (what people expect when looking for a station name or a contract clause), with multiple space-separated terms ANDed. A query yields `Match{doc, segment, begin, end}` in original byte offsets, which the grid and document view turn into highlight rectangles through the shaped clusters.
-- `ScanSearcher` scans the blob with a vectorisable first-byte search plus verification, in parallel chunks for large corpora, and supports narrowing: a longer query is searched only within the previous hits. Scanning 20 MB of text takes a few milliseconds per core.
-- `TrigramIndex` is the optional index for large, mostly static corpora (logs, long documents): posting lists of document ids per case-folded trigram, built incrementally as documents are appended, intersected to get candidates which are then verified by scan. Queries shorter than three bytes fall back to scanning.
+- `SearchCorpus::Filter` scans the blob with a `memchr` first-byte search plus verification, in parallel chunks for large corpora; narrowing (a longer query searched only within the previous hits) happens one level up, in query execution. The corpus of the 1,000,000-row sample market is built in about 0.5 s on 4 threads, once per data version.
+- `TrigramIndex` (planned, not built yet) is the optional index for large, mostly static corpora (logs, long documents): posting lists of document ids per case-folded trigram, built incrementally as documents are appended, intersected to get candidates which are then verified by scan. Queries shorter than three bytes fall back to scanning.
 - Corpora are built lazily on the first search of a table or document and kept up to date incrementally for append-only sources; for changed sources they are rebuilt in the background when the version changes, and the old corpus serves until then.
 - `FuzzyMatcher` (subsequence match with scoring for word starts, consecutive runs and case, like fzf) is used for the command palette and for global search over names, not for data cells.
 
@@ -332,6 +333,21 @@ The frame budget is 16.6 ms; the rules that keep the UI inside it:
 - Rendering is one draw call per atlas page from one mapped buffer.
 
 The benchmark (phase 5) measures frame time at 1,000,000 rows while scrolling, re-sorting and typing a search, on lavapipe and on the real GPU, and reports query latencies separately.
+
+### 14.1 Measured
+
+`gloomy_bench` (`src/apps/bench/main.cc`, release build, 1280 x 800, 1,000,000 rows of the sample market, grid plus search field, offscreen) on the development machine. UI is the CPU time of a frame (input, declaration, layout, painting into draw lists); GPU is upload, draw and wait.
+
+| Scenario | UI avg | UI p95 | GPU avg (RTX 3060) | GPU avg (lavapipe) |
+|---|---:|---:|---:|---:|
+| Idle | 0.16 ms | 0.19 ms | 1.1 ms | 17 ms |
+| Page Down every frame | 0.43 ms | 0.78 ms | 1.3 ms | 22 ms |
+| Wheel scrolling | 0.23 ms | 0.31 ms | 1.2 ms | 16 ms |
+| Home/End jumps | 0.26 ms | 0.39 ms | 1.2 ms | 20 ms |
+| Typing a search | 0.26 ms | 0.50 ms | 1.3 ms | 16 ms |
+| Re-sorting | 0.35 ms | 0.80 ms | 2.2 ms | 18 ms |
+
+Query latency (time until the new rows show; frames keep rendering meanwhile): first search keystroke about 0.5 s (corpus build), later keystrokes 10 to 70 ms (narrowing), Backspace 15 to 35 ms (cached results), sorting a million rows 0.2 to 0.9 s depending on the column (text sorts are slowest). The worst single UI frame seen was about 5 ms, when a new result is applied and the cursor's position is looked up (O(n)).
 
 ## 15. Testing
 

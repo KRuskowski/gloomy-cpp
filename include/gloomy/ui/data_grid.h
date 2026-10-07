@@ -92,6 +92,7 @@ struct GridState {
 
   // Internal: cursor position cache, interaction, type-to-jump.
   std::int64_t cursor_pos = -1;
+  std::int64_t anchor_pos = -1;
   std::uint64_t cursor_generation = ~0ULL;
   bool pressing = false;
   int resizing = -1;

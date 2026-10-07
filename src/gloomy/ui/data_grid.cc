@@ -189,6 +189,18 @@ void SyncCursor(const data::TableView &view, GridState &state) {
   state.cursor_generation = view.generation();
   state.cursor_pos =
       state.cursor ? view.PositionOfKey(*state.cursor) : std::int64_t{-1};
+  if (state.anchor == state.cursor) {
+    state.anchor_pos = state.cursor_pos;
+  } else {
+    state.anchor_pos =
+        state.anchor ? view.PositionOfKey(*state.anchor) : std::int64_t{-1};
+  }
+}
+
+// Makes the cursor row the anchor of range selections.
+void SetAnchor(GridState &state) {
+  state.anchor = state.cursor;
+  state.anchor_pos = state.cursor_pos;
 }
 
 void SetCursor(const data::TableView &view, GridState &state,
@@ -292,7 +304,7 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
       return;
     }
     const std::int64_t anchor_pos =
-        state.anchor ? view.PositionOfKey(*state.anchor) : state.cursor_pos;
+        state.anchor ? state.anchor_pos : state.cursor_pos;
     SetCursor(view, state, pos);
     reveal_cursor = true;
     if ((mods & kModShift) != 0) {
@@ -301,12 +313,12 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
                   anchor_pos < 0 ? state.cursor_pos : anchor_pos,
                   state.cursor_pos);
       if (!state.anchor) {
-        state.anchor = state.cursor;
+        SetAnchor(state);
       }
     } else if ((mods & kModCtrl) == 0) {
       state.selection.Clear();
       state.selection.Set(*state.cursor, true);
-      state.anchor = state.cursor;
+      SetAnchor(state);
     }
   };
   const std::int64_t cur = std::max<std::int64_t>(state.cursor_pos, -1);
@@ -430,7 +442,7 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
     } else if (hit.kind == Hit::Kind::kCell) {
       const std::uint8_t mods = ctx.press_mods();
       const std::int64_t anchor_pos =
-          state.anchor ? view.PositionOfKey(*state.anchor) : -1;
+          state.anchor ? state.anchor_pos : -1;
       SetCursor(view, state, hit.pos);
       for (std::size_t v = 0; v < visible.size(); ++v) {
         if (visible[v] == hit.col) {
@@ -442,11 +454,11 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
       } else if ((mods & kModCtrl) != 0) {
         state.selection.Set(*state.cursor,
                             !state.selection.Contains(*state.cursor));
-        state.anchor = state.cursor;
+        SetAnchor(state);
       } else {
         state.selection.Clear();
         state.selection.Set(*state.cursor, true);
-        state.anchor = state.cursor;
+        SetAnchor(state);
       }
     }
   } else if (it.pressed) {
@@ -488,7 +500,7 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
                             state.scroll_y,
                             n);
       if (hit.kind == Hit::Kind::kCell && state.anchor) {
-        const std::int64_t anchor_pos = view.PositionOfKey(*state.anchor);
+        const std::int64_t anchor_pos = state.anchor_pos;
         SetCursor(view, state, hit.pos);
         SelectRange(view, state, anchor_pos, hit.pos);
         reveal_cursor = true;
