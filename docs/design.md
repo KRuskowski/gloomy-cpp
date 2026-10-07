@@ -256,7 +256,7 @@ Incrementality, which is what keeps typing and live data smooth:
 
 - Narrowing: if the new query only tightens the old one (a search string extended by a character, a filter made stricter, the same sort), it runs on the previous result instead of all rows, and the sort order is preserved, so no re-sort. Backspace pops a short stack of previous results.
 - Re-sort only: changing the sort reorders the existing filtered rows.
-- Append-only sources: new rows are filtered, sorted among themselves and merged into the view (planned; today an appended source is re-queried in the background like any changed source).
+- Append-only sources: new rows are filtered, searched (the corpus is extended, not rebuilt), sorted among themselves and merged into the view (`ExecuteAppend`).
 - Value changes (prices every tick): the view is recomputed when the source version changes, but throttled (default at most every 250 ms for large tables), and selection and focus survive because they are kept as `RowKey`s, not positions.
 
 Execution model: each `TableView` (`include/gloomy/data/table_view.h`) owns one worker thread and runs its queries against the shared `std::shared_ptr<const TableSource>`; sorts and corpus builds split further across `WorkerThreads()` (at most 4). The UI keeps showing the previous `RowView` until the new one is ready (with a subtle busy indicator), then swaps it in at the start of a frame; a newer query cancels an older one at the next chunk boundary. Sources must not change while a snapshot is shared: an app either publishes immutable snapshots (X-conomy can produce per-tick UI tables) or opts into synchronous execution, which tables under about 50,000 rows use anyway because it finishes well within a frame.
@@ -364,3 +364,22 @@ Query latency (time until the new rows show; frames keep rendering meanwhile): f
 5. Showcase example and benchmark.
 
 Docking, overlays and the command palette are spread over phases 3 to 5 as the showcase needs them.
+
+## 17. Status
+
+What exists (October 2026), against this plan. File pointers are in `CLAUDE.md`.
+
+Built:
+
+- Renderer: device context (create or wrap a host device), offscreen target, swapchain, one-pipeline SDF and glyph renderer with per-instance clipping; validation clean on lavapipe and an RTX 3060.
+- Text: FreeType/HarfBuzz shaping with font fallback, glyph atlas, shape cache, wrapping, rich multi-run layout (`LayoutRich`).
+- UI core: immediate-mode context with stable ids, layout engine, input, focus and Tab order, focus rings, popups, tooltips, modals, floating layers; Dark, Light and High Contrast themes.
+- Widgets: label, heading, button, checkbox, radio, slider, progress, text field, dropdown, tabs, scroll area, X3-style list, search field, tooltips, context menus, dialogs, toasts, split panes.
+- Data: `TableSource`, `ColumnarTable`, `FunctionTable`, queries with typed filters, multi-key parallel sort, quick search, grouping and aggregates, narrowing/re-sort/cache/append paths, background `TableView`s, shared search corpora, fuzzy matching.
+- Data grid: everything in 11.2 except column groups, tree rows, right pinning, cell-range selection and the sparkline/icon renderers; plus a standard cell context menu ("only this value", "hide this value", copy).
+- Section 2: `ExplainedLabel`, `Sparkline`, `SummaryCard`, `AnswerLine`, `ViewPreset` with shareable text encoding, `PresetBar`.
+- Document view with outline jumps, links, search and highlights; the Finder (command palette and global search over tables, documents and commands).
+- Showcase (`gloomy_showcase`) and benchmark (`gloomy_bench`, section 14.1).
+
+Not built yet: `SummaryPanel`; docking workspace (only split panes); `NavigationTarget` (section 2.5) as a formal interface; column groups, tree rows and right-pinned columns in the grid; text selection in the document view; trigram index; bidirectional text; number, date and time fields; charts beyond sparklines; the windowed (swapchain) path is built but has only been exercised headless here, since this machine has no display.
+
