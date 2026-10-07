@@ -1,0 +1,53 @@
+#ifndef GLOOMY_APPS_SHOWCASE_SHOWCASE_UI_H_
+#define GLOOMY_APPS_SHOWCASE_SHOWCASE_UI_H_
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "app_shell.h"
+#include "gloomy/data/document.h"
+#include "gloomy/data/table_view.h"
+#include "gloomy/ui/data_grid.h"
+#include "gloomy/ui/document_view.h"
+#include "gloomy/ui/view_preset.h"
+#include "gloomy/ui/widgets.h"
+#include "sample_data.h"
+
+namespace gloomy::showcase {
+
+/// Everything the showcase keeps between frames.
+struct ShowcaseState {
+  std::shared_ptr<apps::SampleMarket> market;
+  std::unique_ptr<data::TableView> view;
+  /// The query behind the answer line (row one is the answer).
+  std::unique_ptr<data::TableView> answer_view;
+  ui::GridState grid;
+  std::vector<ui::ViewPreset> presets;
+  int preset = 0;
+  std::string search;
+  data::Document contract;
+  std::vector<data::DocSection> outline;
+  ui::DocumentViewState doc;
+  ui::ListState outline_list;
+  int tab = 0;
+  int theme = 0;
+  std::vector<float> ore_history;
+  std::vector<float> energy_history;
+  double avg_ore = 0.0;
+  double avg_energy = 0.0;
+  std::int64_t shortages = 0;
+  std::string toast;
+  double toast_until = 0.0;
+};
+
+/// Builds the sample data, presets and views.
+void InitShowcase(ShowcaseState &state, int rows);
+
+/// Declares the showcase UI for one frame.
+void ShowcaseUi(ui::Context &ctx, const apps::FrameInfo &info,
+                ShowcaseState &state);
+
+}  // namespace gloomy::showcase
+
+#endif  // GLOOMY_APPS_SHOWCASE_SHOWCASE_UI_H_

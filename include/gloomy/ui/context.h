@@ -102,6 +102,9 @@ enum class LayerKind : std::uint8_t {
   /// Centred over a dimmed screen; blocks input to everything below and
   /// keeps keyboard focus inside.
   kModal,
+  /// At the top-left corner of the anchor rectangle; for toasts and
+  /// floating panels. Takes input but does not block what is below.
+  kFloating,
 };
 
 /// What custom painters get.
@@ -213,6 +216,9 @@ class Context {
   auto Wheel(Id id) const -> Vec2;
 
   auto time() const -> double { return time_; }
+
+  /// Size of the current frame's viewport.
+  auto viewport() const -> Vec2 { return viewport_; }
 
   auto frame() const -> std::uint64_t { return frame_; }
 

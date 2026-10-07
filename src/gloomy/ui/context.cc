@@ -336,6 +336,12 @@ void Context::LayoutLayer(const Layer &layer) {
     case LayerKind::kModal:
       tree_.Compute(layer.root, screen, measurer);
       break;
+    case LayerKind::kFloating:
+      tree_.Compute(
+          layer.root,
+          Rect{layer.anchor.x0, layer.anchor.y0, viewport_.x, viewport_.y},
+          measurer);
+      break;
     case LayerKind::kTooltip: {
       Rect avail{mouse_.x + 12, mouse_.y + 18, viewport_.x, viewport_.y};
       tree_.Compute(layer.root, avail, measurer);
@@ -575,6 +581,7 @@ void Context::BeginLayer(LayerKind kind, Id id, const Rect &anchor) {
       break;
     case LayerKind::kPopup:
     case LayerKind::kTooltip:
+    case LayerKind::kFloating:
       root.layout.width =
           SizeSpec::Fit(kind == LayerKind::kPopup ? anchor.Width() : 0.0F);
       root.layout.height = SizeSpec::Fit();
@@ -587,7 +594,7 @@ void Context::BeginLayer(LayerKind kind, Id id, const Rect &anchor) {
       root.style.shadow = c.shadow;
       root.style.shadow_blur = 8;
       root.style.shadow_offset = {0, 3};
-      root.flags = kind == LayerKind::kPopup ? kNodeInteractive : kNodeNone;
+      root.flags = kind == LayerKind::kTooltip ? kNodeNone : kNodeInteractive;
       break;
   }
   layers_.back().root = Open(root);
