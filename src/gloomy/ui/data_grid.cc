@@ -279,244 +279,140 @@ auto FindPrefix(const data::TableView &view, const GridState &state,
   return -1;
 }
 
-}  // namespace
-
-auto DefaultColumns(const data::TableSource &source)
-    -> std::vector<GridColumn> {
-  std::vector<GridColumn> columns;
-  const auto infos = source.Columns();
-  for (std::size_t i = 0; i < infos.size(); ++i) {
-    GridColumn c;
-    c.column = static_cast<int>(i);
-    c.width = infos[i].type == ColumnType::kText ? 180.0F
-              : infos[i].IsNumeric()             ? 110.0F
-                                                 : 90.0F;
-    if (infos[i].type == ColumnType::kEnum) {
-      c.renderer = CellRenderer::kBadge;
-    }
-    columns.push_back(c);
-  }
-  return columns;
-}
-
-auto SelectedRows(const data::TableView &view, const GridState &state)
-    -> std::vector<RowIndex> {
-  std::vector<RowIndex> out;
+// Keys while the grid has focus.
+// @return True if the cursor moved and should be scrolled into view.
+auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
+                const std::vector<int> &visible, int page, GridResult &result)
+    -> bool {
+  bool reveal_cursor = false;
   const auto rows = view.rows();
-  if (state.selection.Empty()) {
-    if (state.cursor_pos >= 0 &&
-        state.cursor_pos < static_cast<std::int64_t>(rows.size())) {
-      out.push_back(rows[static_cast<std::size_t>(state.cursor_pos)]);
+  const auto n = static_cast<std::int64_t>(rows.size());
+  auto move = [&](std::int64_t pos, std::uint8_t mods) {
+    if (n == 0) {
+      return;
     }
-    return out;
-  }
-  for (const RowIndex r : rows) {
-    if (state.selection.Contains(view.source().RowKey(r))) {
-      out.push_back(r);
-    }
-  }
-  return out;
-}
-
-auto CopyAsTsv(const data::TableView &view, const GridState &state)
-    -> std::string {
-  const data::TableSource &src = view.source();
-  std::string out;
-  std::vector<int> cols;
-  for (const GridColumn &c : state.columns) {
-    if (c.visible) {
-      cols.push_back(c.column);
-    }
-  }
-  auto clean = [](std::string_view s, std::string &o) {
-    for (const char ch : s) {
-      o.push_back(ch == '\t' || ch == '\n' || ch == '\r' ? ' ' : ch);
+    const std::int64_t anchor_pos =
+        state.anchor ? view.PositionOfKey(*state.anchor) : state.cursor_pos;
+    SetCursor(view, state, pos);
+    reveal_cursor = true;
+    if ((mods & kModShift) != 0) {
+      SelectRange(view,
+                  state,
+                  anchor_pos < 0 ? state.cursor_pos : anchor_pos,
+                  state.cursor_pos);
+      if (!state.anchor) {
+        state.anchor = state.cursor;
+      }
+    } else if ((mods & kModCtrl) == 0) {
+      state.selection.Clear();
+      state.selection.Set(*state.cursor, true);
+      state.anchor = state.cursor;
     }
   };
-  for (std::size_t i = 0; i < cols.size(); ++i) {
-    if (i > 0) {
-      out.push_back('\t');
-    }
-    clean(src.Columns()[cols[i]].title, out);
+  const std::int64_t cur = std::max<std::int64_t>(state.cursor_pos, -1);
+  std::uint8_t mods = 0;
+  while (ctx.ConsumeKeyAnyMods(Key::kDown, mods))
+    move(cur + 1, mods);
+  while (ctx.ConsumeKeyAnyMods(Key::kUp, mods)) {
+    move(std::max<std::int64_t>(0, cur - 1), mods);
   }
-  out.push_back('\n');
-  std::string cell;
-  for (const RowIndex r : SelectedRows(view, state)) {
-    for (std::size_t i = 0; i < cols.size(); ++i) {
-      if (i > 0) {
-        out.push_back('\t');
-      }
-      src.FormatCell(r, cols[i], cell);
-      clean(cell, out);
-    }
-    out.push_back('\n');
+  while (ctx.ConsumeKeyAnyMods(Key::kPageDown, mods))
+    move(cur + page, mods);
+  while (ctx.ConsumeKeyAnyMods(Key::kPageUp, mods)) {
+    move(std::max<std::int64_t>(0, cur - page), mods);
   }
-  return out;
+  while (ctx.ConsumeKeyAnyMods(Key::kHome, mods))
+    move(0, mods);
+  while (ctx.ConsumeKeyAnyMods(Key::kEnd, mods))
+    move(n - 1, mods);
+  if (ctx.ConsumeKey(Key::kLeft, kModAlt)) {
+    // Move the cursor column left.
+    if (state.cursor_col > 0) {
+      std::swap(state.columns[static_cast<std::size_t>(
+                    visible[static_cast<std::size_t>(state.cursor_col)])],
+                state.columns[static_cast<std::size_t>(
+                    visible[static_cast<std::size_t>(state.cursor_col) - 1])]);
+      --state.cursor_col;
+    }
+  }
+  if (ctx.ConsumeKey(Key::kRight, kModAlt)) {
+    if (state.cursor_col + 1 < static_cast<int>(visible.size())) {
+      std::swap(state.columns[static_cast<std::size_t>(
+                    visible[static_cast<std::size_t>(state.cursor_col)])],
+                state.columns[static_cast<std::size_t>(
+                    visible[static_cast<std::size_t>(state.cursor_col) + 1])]);
+      ++state.cursor_col;
+    }
+  }
+  if (ctx.ConsumeKey(Key::kLeft)) {
+    state.cursor_col = std::max(0, state.cursor_col - 1);
+    reveal_cursor = true;
+  }
+  if (ctx.ConsumeKey(Key::kRight)) {
+    state.cursor_col =
+        std::min(static_cast<int>(visible.size()) - 1, state.cursor_col + 1);
+    reveal_cursor = true;
+  }
+  if (ctx.ConsumeKey(Key::kA, kModCtrl)) {
+    state.selection.SelectAll();
+  }
+  if (ctx.ConsumeKey(Key::kC, kModCtrl)) {
+    ctx.clipboard().set(CopyAsTsv(view, state));
+  }
+  if (!state.selection.Empty() && ctx.ConsumeKey(Key::kEscape)) {
+    state.selection.Clear();
+  }
+  if (state.cursor && ctx.ConsumeKey(Key::kSpace, kModNone, true)) {
+    state.selection.Set(*state.cursor,
+                        !state.selection.Contains(*state.cursor));
+  }
+  if (ctx.ConsumeKey(Key::kEnter) && state.cursor_pos >= 0 &&
+      state.cursor_pos < n) {
+    result.activated = true;
+    result.row = rows[static_cast<std::size_t>(state.cursor_pos)];
+  }
+  // Type to jump on the primary sort column, else the cursor column.
+  const std::string typed = ctx.TakeText();
+  if (!typed.empty() && typed != " " && !visible.empty()) {
+    int jump_col = state
+                       .columns[static_cast<std::size_t>(
+                           visible[static_cast<std::size_t>(state.cursor_col)])]
+                       .column;
+    if (!state.query.sort.empty()) {
+      jump_col = state.query.sort[0].column;
+    }
+    if (ctx.time() - state.jump_time > kJumpTimeout) {
+      state.jump_prefix.clear();
+    }
+    const std::string folded = Fold(typed);
+    const bool repeat =
+        state.jump_prefix.empty() || state.jump_prefix == folded;
+    state.jump_prefix = repeat ? folded : state.jump_prefix + folded;
+    state.jump_time = ctx.time();
+    const std::int64_t found = FindPrefix(
+        view,
+        state,
+        jump_col,
+        state.jump_prefix,
+        std::max<std::int64_t>(0, state.cursor_pos + (repeat ? 1 : 0)));
+    if (found >= 0) {
+      move(found, kModNone);
+    }
+  }
+  return reveal_cursor;
 }
 
-auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
-              GridState &state, LayoutSpec layout) -> GridResult {
-  const Theme &t = ctx.theme();
-  GridResult result;
-  const Id id = ctx.GetId(label);
-  const Id bar_id = HashCombine(id, 0x76626172ULL);
-  const Id menu_id = HashCombine(id, 0x6D656E75ULL);
-  const Id tip_id = HashCombine(id, 0x746970ULL);
-
-  if (state.columns.empty()) {
-    state.columns = DefaultColumns(view.source());
-  }
-  if (view.query() != state.query) {
-    view.SetQuery(state.query);
-  }
-  view.Update(ctx.time());
-  SyncCursor(view, state);
-
+// Pointer input: selection, sorting, resizing, reordering, menus.
+// @return True if the cursor moved and should be scrolled into view.
+auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
+                   const Interaction &it, const Geometry &g,
+                   const std::vector<int> &visible, Id id, Id menu_id,
+                   GridResult &result) -> bool {
+  bool reveal_cursor = false;
   const auto rows = view.rows();
   const auto n = static_cast<std::int64_t>(rows.size());
   const data::TableSource &src = view.source();
-  const auto infos = src.Columns();
-  const Interaction it = ctx.Interact(id);
-  const Rect body = it.rect;
-  const Geometry g = MakeGeometry(state, body, t);
   const double viewport = std::max(0.0F, g.rows.Height());
-  const int page = std::max(1, static_cast<int>(viewport / g.row_h) - 1);
-  const std::uint64_t selection_before =
-      state.selection.keys.size() + (state.selection.all ? 1ULL << 62U : 0);
-  const std::optional<std::uint64_t> cursor_before = state.cursor;
-  const data::Query query_before = state.query;
-  bool reveal_cursor = false;
-
-  // Visible display columns, for cursor movement.
-  std::vector<int> visible;
-  for (std::size_t i = 0; i < state.columns.size(); ++i) {
-    if (state.columns[i].visible) {
-      visible.push_back(static_cast<int>(i));
-    }
-  }
-  state.cursor_col = std::clamp(
-      state.cursor_col, 0, std::max(0, static_cast<int>(visible.size()) - 1));
-
-  // Keyboard.
-  if (ctx.HasFocus(id)) {
-    auto move = [&](std::int64_t pos, std::uint8_t mods) {
-      if (n == 0) {
-        return;
-      }
-      const std::int64_t anchor_pos =
-          state.anchor ? view.PositionOfKey(*state.anchor) : state.cursor_pos;
-      SetCursor(view, state, pos);
-      reveal_cursor = true;
-      if ((mods & kModShift) != 0) {
-        SelectRange(view,
-                    state,
-                    anchor_pos < 0 ? state.cursor_pos : anchor_pos,
-                    state.cursor_pos);
-        if (!state.anchor) {
-          state.anchor = state.cursor;
-        }
-      } else if ((mods & kModCtrl) == 0) {
-        state.selection.Clear();
-        state.selection.Set(*state.cursor, true);
-        state.anchor = state.cursor;
-      }
-    };
-    const std::int64_t cur = std::max<std::int64_t>(state.cursor_pos, -1);
-    std::uint8_t mods = 0;
-    while (ctx.ConsumeKeyAnyMods(Key::kDown, mods))
-      move(cur + 1, mods);
-    while (ctx.ConsumeKeyAnyMods(Key::kUp, mods)) {
-      move(std::max<std::int64_t>(0, cur - 1), mods);
-    }
-    while (ctx.ConsumeKeyAnyMods(Key::kPageDown, mods))
-      move(cur + page, mods);
-    while (ctx.ConsumeKeyAnyMods(Key::kPageUp, mods)) {
-      move(std::max<std::int64_t>(0, cur - page), mods);
-    }
-    while (ctx.ConsumeKeyAnyMods(Key::kHome, mods))
-      move(0, mods);
-    while (ctx.ConsumeKeyAnyMods(Key::kEnd, mods))
-      move(n - 1, mods);
-    if (ctx.ConsumeKey(Key::kLeft, kModAlt)) {
-      // Move the cursor column left.
-      if (state.cursor_col > 0) {
-        std::swap(
-            state.columns[static_cast<std::size_t>(
-                visible[static_cast<std::size_t>(state.cursor_col)])],
-            state.columns[static_cast<std::size_t>(
-                visible[static_cast<std::size_t>(state.cursor_col) - 1])]);
-        --state.cursor_col;
-      }
-    }
-    if (ctx.ConsumeKey(Key::kRight, kModAlt)) {
-      if (state.cursor_col + 1 < static_cast<int>(visible.size())) {
-        std::swap(
-            state.columns[static_cast<std::size_t>(
-                visible[static_cast<std::size_t>(state.cursor_col)])],
-            state.columns[static_cast<std::size_t>(
-                visible[static_cast<std::size_t>(state.cursor_col) + 1])]);
-        ++state.cursor_col;
-      }
-    }
-    if (ctx.ConsumeKey(Key::kLeft)) {
-      state.cursor_col = std::max(0, state.cursor_col - 1);
-      reveal_cursor = true;
-    }
-    if (ctx.ConsumeKey(Key::kRight)) {
-      state.cursor_col =
-          std::min(static_cast<int>(visible.size()) - 1, state.cursor_col + 1);
-      reveal_cursor = true;
-    }
-    if (ctx.ConsumeKey(Key::kA, kModCtrl)) {
-      state.selection.SelectAll();
-    }
-    if (ctx.ConsumeKey(Key::kC, kModCtrl)) {
-      ctx.clipboard().set(CopyAsTsv(view, state));
-    }
-    if (!state.selection.Empty() && ctx.ConsumeKey(Key::kEscape)) {
-      state.selection.Clear();
-    }
-    if (state.cursor && ctx.ConsumeKey(Key::kSpace, kModNone, true)) {
-      state.selection.Set(*state.cursor,
-                          !state.selection.Contains(*state.cursor));
-    }
-    if (ctx.ConsumeKey(Key::kEnter) && state.cursor_pos >= 0 &&
-        state.cursor_pos < n) {
-      result.activated = true;
-      result.row = rows[static_cast<std::size_t>(state.cursor_pos)];
-    }
-    // Type to jump on the primary sort column, else the cursor column.
-    const std::string typed = ctx.TakeText();
-    if (!typed.empty() && typed != " " && !visible.empty()) {
-      int jump_col =
-          state
-              .columns[static_cast<std::size_t>(
-                  visible[static_cast<std::size_t>(state.cursor_col)])]
-              .column;
-      if (!state.query.sort.empty()) {
-        jump_col = state.query.sort[0].column;
-      }
-      if (ctx.time() - state.jump_time > kJumpTimeout) {
-        state.jump_prefix.clear();
-      }
-      const std::string folded = Fold(typed);
-      const bool repeat =
-          state.jump_prefix.empty() || state.jump_prefix == folded;
-      state.jump_prefix = repeat ? folded : state.jump_prefix + folded;
-      state.jump_time = ctx.time();
-      const std::int64_t found = FindPrefix(
-          view,
-          state,
-          jump_col,
-          state.jump_prefix,
-          std::max<std::int64_t>(0, state.cursor_pos + (repeat ? 1 : 0)));
-      if (found >= 0) {
-        move(found, kModNone);
-      }
-    }
-  }
-
-  // Mouse.
   const Vec2 mouse = ctx.mouse();
   // A press and release within one frame still counts as a press.
   if ((it.pressed || it.clicked) && !state.pressing) {
@@ -642,393 +538,301 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
       result.context_row = r;
     }
   }
+  return reveal_cursor;
+}
 
-  // Scrolling.
-  const Vec2 wheel = ctx.Wheel(id);
-  if ((ctx.mods() & kModShift) != 0 && wheel.x == 0.0F) {
-    state.scroll_x -= wheel.y * 40.0F;
-  } else {
-    state.scroll_y -= wheel.y * g.row_h * 3.0;
-    state.scroll_x -= wheel.x * 40.0F;
-  }
-  const double content_h = static_cast<double>(n) * g.row_h;
-  if (reveal_cursor && state.cursor_pos >= 0) {
-    const double top = static_cast<double>(state.cursor_pos) * g.row_h;
-    if (top < state.scroll_y) {
-      state.scroll_y = top;
-    } else if (top + g.row_h > state.scroll_y + viewport) {
-      state.scroll_y = top + g.row_h - viewport;
+// Draws the grid: rows, cells, header, status bar.
+void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
+               const GridState &state, bool focused, bool busy) {
+  const Theme &th = pc.theme;
+  const Palette &c = th.colors;
+  const data::TableSource &s = view.source();
+  const auto infos2 = s.Columns();
+  const auto rows2 = view.rows();
+  const auto count = static_cast<std::int64_t>(rows2.size());
+  const Geometry geo = MakeGeometry(state, r, th);
+  gfx::DrawList &list = pc.list;
+  const float font = th.metrics.font_size;
+  const float small = th.metrics.small_font_size + 1;
+  const std::vector<std::string> &terms = view.terms();
+  std::string cell;
+  std::vector<data::MatchRange> matches;
+
+  auto region_for = [&](const ColSpan &span) {
+    return span.pinned ? Rect{geo.body.x0,
+                              geo.body.y0,
+                              geo.body.x0 + geo.pinned_w,
+                              geo.body.y1}
+                       : geo.ScrollRegion();
+  };
+
+  // Rows.
+  const auto first = static_cast<std::int64_t>(state.scroll_y / geo.row_h);
+  const float offset = static_cast<float>(
+      state.scroll_y - static_cast<double>(first) * geo.row_h);
+  list.PushClip(geo.rows);
+  float y = geo.rows.y0 - offset;
+  data::Explanation scratch;
+  for (std::int64_t p = first; p < count && y < geo.rows.y1;
+       ++p, y += geo.row_h) {
+    const RowIndex row = rows2[static_cast<std::size_t>(p)];
+    const Rect row_rect{geo.body.x0, y, geo.body.x1, y + geo.row_h};
+    const std::uint64_t key = s.RowKey(row);
+    if (state.selection.Contains(key)) {
+      list.FillRect(
+          row_rect,
+          focused ? c.selection : c.selection.WithAlpha(c.selection.a * 0.6F));
+    } else if (p % 2 == 1) {
+      list.FillRect(row_rect, c.surface_alt);
     }
-    if (!visible.empty() && body.Width() > 0) {
-      const GridColumn &c = state.columns[static_cast<std::size_t>(
-          visible[static_cast<std::size_t>(state.cursor_col)])];
-      if (!c.pinned) {
-        float x = 0.0F;
-        for (const ColSpan &s : g.cols) {
-          if (s.index == visible[static_cast<std::size_t>(state.cursor_col)]) {
-            x = s.x0 + state.scroll_x - (body.x0 + g.pinned_w);
-          }
-        }
-        const float avail = body.Width() - g.pinned_w;
-        if (x < state.scroll_x) {
-          state.scroll_x = x;
-        } else if (x + c.width > state.scroll_x + avail) {
-          state.scroll_x = x + c.width - avail;
-        }
+    for (const ColSpan &span : geo.cols) {
+      const GridColumn &col =
+          state.columns[static_cast<std::size_t>(span.index)];
+      const ColumnInfo &info = infos2[col.column];
+      const Rect region = region_for(span);
+      const Rect cell_rect =
+          Rect{span.x0, y, span.x1, y + geo.row_h}.Intersect(region);
+      if (cell_rect.Empty()) {
+        continue;
       }
-    }
-  }
-  state.scroll_y =
-      std::clamp(state.scroll_y, 0.0, std::max(0.0, content_h - viewport));
-  state.scroll_x = std::clamp(
-      state.scroll_x, 0.0F, std::max(0.0F, g.content_w - body.Width()));
-
-  // Hover, for explanation tooltips.
-  std::optional<data::Explanation> tooltip;
-  {
-    const Hit hit = it.hovered ? HitAt(g, mouse, state.scroll_y, n) : Hit{};
-    if (hit.kind == Hit::Kind::kCell) {
-      if (hit.pos != state.hover_pos || hit.col != state.hover_col) {
-        state.hover_pos = hit.pos;
-        state.hover_col = hit.col;
-        state.hover_since = ctx.time();
-      }
-      const GridColumn &c = state.columns[static_cast<std::size_t>(hit.col)];
-      data::Explanation e;
-      if (infos[c.column].explained &&
-          ctx.time() - state.hover_since >= kHoverDelay &&
-          src.Explain(rows[static_cast<std::size_t>(hit.pos)], c.column, e)) {
-        tooltip = std::move(e);
-      }
-    } else {
-      state.hover_pos = -1;
-      state.hover_col = -1;
-    }
-  }
-
-  // Nodes: the body (painted by hand) and the scroll bar.
-  if (layout.width.kind == SizeKind::kFit) {
-    layout.width = SizeSpec::Grow();
-  }
-  if (layout.height.kind == SizeKind::kFit) {
-    layout.height = SizeSpec::Grow();
-  }
-  NodeDesc outer;
-  outer.layout = layout;
-  outer.layout.mode = LayoutMode::kRow;
-  outer.style.fill = t.colors.surface;
-  outer.style.border = t.colors.border;
-  outer.style.border_width = t.metrics.border_width;
-  outer.style.radii = gfx::CornerRadii::All(t.metrics.radius);
-  outer.layout.padding = Padding::All(1);
-  ctx.Open(outer);
-  NodeDesc grid;
-  grid.id = id;
-  grid.layout.width = SizeSpec::Grow();
-  grid.layout.height = SizeSpec::Grow();
-  grid.flags = kNodeInteractive | kNodeFocusable | kNodeWheel | kNodeClip |
-               kNodeFocusRing;
-  const int node = ctx.Open(grid);
-  ctx.Close();
-  const bool focused = ctx.HasFocus(id);
-  const bool busy = view.busy();
-  ctx.AddPainter(
-      node, [&view, &state, focused, busy](PaintContext &pc, const Rect &r) {
-        const Theme &th = pc.theme;
-        const Palette &c = th.colors;
-        const data::TableSource &s = view.source();
-        const auto infos2 = s.Columns();
-        const auto rows2 = view.rows();
-        const auto count = static_cast<std::int64_t>(rows2.size());
-        const Geometry geo = MakeGeometry(state, r, th);
-        gfx::DrawList &list = pc.list;
-        const float font = th.metrics.font_size;
-        const float small = th.metrics.small_font_size + 1;
-        const std::vector<std::string> &terms = view.terms();
-        std::string cell;
-        std::vector<data::MatchRange> matches;
-
-        auto region_for = [&](const ColSpan &span) {
-          return span.pinned ? Rect{geo.body.x0,
-                                    geo.body.y0,
-                                    geo.body.x0 + geo.pinned_w,
-                                    geo.body.y1}
-                             : geo.ScrollRegion();
-        };
-
-        // Rows.
-        const auto first =
-            static_cast<std::int64_t>(state.scroll_y / geo.row_h);
-        const float offset = static_cast<float>(
-            state.scroll_y - static_cast<double>(first) * geo.row_h);
-        list.PushClip(geo.rows);
-        float y = geo.rows.y0 - offset;
-        data::Explanation scratch;
-        for (std::int64_t p = first; p < count && y < geo.rows.y1;
-             ++p, y += geo.row_h) {
-          const RowIndex row = rows2[static_cast<std::size_t>(p)];
-          const Rect row_rect{geo.body.x0, y, geo.body.x1, y + geo.row_h};
-          const std::uint64_t key = s.RowKey(row);
-          if (state.selection.Contains(key)) {
-            list.FillRect(row_rect,
-                          focused
-                              ? c.selection
-                              : c.selection.WithAlpha(c.selection.a * 0.6F));
-          } else if (p % 2 == 1) {
-            list.FillRect(row_rect, c.surface_alt);
-          }
-          for (const ColSpan &span : geo.cols) {
-            const GridColumn &col =
-                state.columns[static_cast<std::size_t>(span.index)];
-            const ColumnInfo &info = infos2[col.column];
-            const Rect region = region_for(span);
-            const Rect cell_rect =
-                Rect{span.x0, y, span.x1, y + geo.row_h}.Intersect(region);
-            if (cell_rect.Empty()) {
-              continue;
-            }
-            list.PushClip(cell_rect);
-            s.FormatCell(row, col.column, cell);
-            Color fg = c.text;
-            const Rect text_box{
-                span.x0 + kCellPad, y, span.x1 - kCellPad, y + geo.row_h};
-            switch (col.renderer) {
-              case CellRenderer::kBar: {
-                const double v = s.GetDouble(col.column, row);
-                const double f =
-                    col.bar_max > 0 ? std::clamp(v / col.bar_max, 0.0, 1.0) : 0;
-                if (!std::isnan(f)) {
-                  list.FillRect(
-                      {span.x0 + 2,
-                       y + 3,
-                       span.x0 + 2 +
-                           static_cast<float>(f) * (span.x1 - span.x0 - 4),
-                       y + geo.row_h - 3},
-                      c.primary.WithAlpha(0.3F),
-                      gfx::CornerRadii::All(2));
-                }
-                break;
-              }
-              case CellRenderer::kAge: {
-                if (col.age_column >= 0) {
-                  const double age = s.GetDouble(col.age_column, row);
-                  const double span_age =
-                      std::max(1e-9, col.age_stale - col.age_fresh);
-                  const float f = static_cast<float>(
-                      std::clamp((age - col.age_fresh) / span_age, 0.0, 1.0));
-                  fg = Mix(c.text, c.text_disabled, f);
-                }
-                break;
-              }
-              case CellRenderer::kBadge: {
-                if (!cell.empty()) {
-                  const float w =
-                      pc.text.Measure(cell, th.fonts.sans, small) + 12;
-                  list.FillRect({text_box.x0 - 2,
-                                 y + 3,
-                                 std::min(text_box.x0 - 2 + w, span.x1 - 2),
-                                 y + geo.row_h - 3},
-                                BadgeColor(c, s.GetInt64(col.column, row)),
-                                gfx::CornerRadii::All((geo.row_h - 6) * 0.5F));
-                }
-                break;
-              }
-              case CellRenderer::kText:
-                break;
-            }
-            const text::HAlign align =
-                IsRightAligned(info) && col.renderer != CellRenderer::kBadge
-                    ? text::HAlign::kRight
-                    : text::HAlign::kLeft;
-            const Rect box =
-                col.renderer == CellRenderer::kBadge
-                    ? Rect{text_box.x0 + 4, y, text_box.x1, y + geo.row_h}
-                    : text_box;
-            const float size =
-                col.renderer == CellRenderer::kBadge ? small : font;
-            // Search highlights behind the text.
-            if (!terms.empty() && info.searchable) {
-              matches.clear();
-              data::FindMatches(cell, terms, matches);
-              if (!matches.empty()) {
-                const text::ShapedText &shaped =
-                    pc.text.Shape(cell, th.fonts.sans, size);
-                const float x0 = align == text::HAlign::kRight
-                                     ? std::round(box.x1 - shaped.width)
-                                     : box.x0;
-                for (const data::MatchRange &m : matches) {
-                  list.FillRect({x0 + shaped.CaretX(m.begin),
-                                 y + 3,
-                                 x0 + shaped.CaretX(m.end),
-                                 y + geo.row_h - 3},
-                                c.highlight,
-                                gfx::CornerRadii::All(2));
-                }
-              }
-            }
-            pc.text.DrawFitted(list, cell, th.fonts.sans, size, box, fg, align);
-            if (info.explained && s.Explain(row, col.column, scratch)) {
-              // A small corner tick marks cells with an explanation.
-              list.FillRect({span.x1 - 5, y + 1, span.x1 - 1, y + 3}, c.accent);
-              list.FillRect({span.x1 - 3, y + 1, span.x1 - 1, y + 5}, c.accent);
-            }
-            list.PopClip();
-          }
-          // The cursor.
-          if (state.cursor && *state.cursor == key) {
-            list.StrokeRect(
-                row_rect.Inset(0.5F), focused ? c.focus : c.border, 1.0F);
-          }
-        }
-        if (count == 0) {
-          const bool filtered = !view.view().query.search.empty() ||
-                                !view.view().query.filters.empty();
-          pc.text.DrawFitted(list,
-                             busy ? "Searching\xE2\x80\xA6"
-                                  : (filtered ? "No rows match" : "No rows"),
-                             th.fonts.sans,
-                             font,
-                             {geo.rows.x0,
-                              geo.rows.y0 + 12,
-                              geo.rows.x1,
-                              geo.rows.y0 + 12 + geo.row_h},
-                             c.text_muted,
-                             text::HAlign::kCenter);
-        }
-        list.PopClip();
-
-        // Header.
-        list.FillRect(geo.header, c.surface_raised);
-        list.FillRect(
-            {geo.header.x0, geo.header.y1 - 1, geo.header.x1, geo.header.y1},
-            c.border);
-        for (const ColSpan &span : geo.cols) {
-          const GridColumn &col =
-              state.columns[static_cast<std::size_t>(span.index)];
-          const ColumnInfo &info = infos2[col.column];
-          const Rect region = region_for(span);
-          const Rect head =
-              Rect{span.x0, geo.header.y0, span.x1, geo.header.y1 - 1}
-                  .Intersect(region);
-          if (head.Empty()) {
-            continue;
-          }
-          list.PushClip(head);
-          if (state.dragging == span.index && state.drag_moved) {
-            list.FillRect(head, c.active);
-          }
-          // Sort indicator (with the key's rank when sorting by several).
-          float right = span.x1 - kCellPad;
-          const auto &sort = state.query.sort;
-          for (std::size_t k = 0; k < sort.size(); ++k) {
-            if (sort[k].column != col.column) {
-              continue;
-            }
-            const float cx = right - 4;
-            const float cy = std::round(head.Center().y);
-            const bool up = sort[k].direction == SortDirection::kAscending;
-            const float d = up ? -1.0F : 1.0F;
-            list.Line({cx - 4, cy - 2 * d}, {cx, cy + 2 * d}, 1.5F, c.primary);
-            list.Line({cx, cy + 2 * d}, {cx + 4, cy - 2 * d}, 1.5F, c.primary);
-            right -= 12;
-            if (sort.size() > 1) {
-              const std::string rank = std::to_string(k + 1);
-              pc.text.DrawFitted(list,
-                                 rank,
-                                 th.fonts.sans,
-                                 small - 2,
-                                 {right - 8, head.y0, right, head.y1},
-                                 c.primary,
-                                 text::HAlign::kRight);
-              right -= 10;
-            }
-          }
-          // Filter marker.
-          for (const data::Filter &f : state.query.filters) {
-            if (f.column == col.column) {
-              list.FillCircle(
-                  {right - 3, std::round(head.Center().y)}, 3, c.accent);
-              right -= 10;
-              break;
-            }
-          }
-          const text::HAlign align =
-              IsRightAligned(info) ? text::HAlign::kRight : text::HAlign::kLeft;
-          pc.text.DrawFitted(list,
-                             info.title,
-                             th.fonts.bold,
-                             small,
-                             {span.x0 + kCellPad, head.y0, right, head.y1},
-                             c.text_muted,
-                             align);
-          list.PopClip();
-          // Column edge.
-          if (span.x1 > region.x0 && span.x1 <= region.x1) {
+      list.PushClip(cell_rect);
+      s.FormatCell(row, col.column, cell);
+      Color fg = c.text;
+      const Rect text_box{
+          span.x0 + kCellPad, y, span.x1 - kCellPad, y + geo.row_h};
+      switch (col.renderer) {
+        case CellRenderer::kBar: {
+          const double v = s.GetDouble(col.column, row);
+          const double f =
+              col.bar_max > 0 ? std::clamp(v / col.bar_max, 0.0, 1.0) : 0;
+          if (!std::isnan(f)) {
             list.FillRect(
-                {span.x1 - 1, geo.header.y0 + 5, span.x1, geo.header.y1 - 5},
-                c.divider);
+                {span.x0 + 2,
+                 y + 3,
+                 span.x0 + 2 + static_cast<float>(f) * (span.x1 - span.x0 - 4),
+                 y + geo.row_h - 3},
+                c.primary.WithAlpha(0.3F),
+                gfx::CornerRadii::All(2));
+          }
+          break;
+        }
+        case CellRenderer::kAge: {
+          if (col.age_column >= 0) {
+            const double age = s.GetDouble(col.age_column, row);
+            const double span_age =
+                std::max(1e-9, col.age_stale - col.age_fresh);
+            const float f = static_cast<float>(
+                std::clamp((age - col.age_fresh) / span_age, 0.0, 1.0));
+            fg = Mix(c.text, c.text_disabled, f);
+          }
+          break;
+        }
+        case CellRenderer::kBadge: {
+          if (!cell.empty()) {
+            const float w = pc.text.Measure(cell, th.fonts.sans, small) + 12;
+            list.FillRect({text_box.x0 - 2,
+                           y + 3,
+                           std::min(text_box.x0 - 2 + w, span.x1 - 2),
+                           y + geo.row_h - 3},
+                          BadgeColor(c, s.GetInt64(col.column, row)),
+                          gfx::CornerRadii::All((geo.row_h - 6) * 0.5F));
+          }
+          break;
+        }
+        case CellRenderer::kText:
+          break;
+      }
+      const text::HAlign align =
+          IsRightAligned(info) && col.renderer != CellRenderer::kBadge
+              ? text::HAlign::kRight
+              : text::HAlign::kLeft;
+      const Rect box =
+          col.renderer == CellRenderer::kBadge
+              ? Rect{text_box.x0 + 4, y, text_box.x1, y + geo.row_h}
+              : text_box;
+      const float size = col.renderer == CellRenderer::kBadge ? small : font;
+      // Search highlights behind the text.
+      if (!terms.empty() && info.searchable) {
+        matches.clear();
+        data::FindMatches(cell, terms, matches);
+        if (!matches.empty()) {
+          const text::ShapedText &shaped =
+              pc.text.Shape(cell, th.fonts.sans, size);
+          const float x0 = align == text::HAlign::kRight
+                               ? std::round(box.x1 - shaped.width)
+                               : box.x0;
+          for (const data::MatchRange &m : matches) {
+            list.FillRect({x0 + shaped.CaretX(m.begin),
+                           y + 3,
+                           x0 + shaped.CaretX(m.end),
+                           y + geo.row_h - 3},
+                          c.highlight,
+                          gfx::CornerRadii::All(2));
           }
         }
-        if (geo.pinned_w > 0) {
-          list.FillRect({geo.body.x0 + geo.pinned_w - 1,
-                         geo.body.y0,
-                         geo.body.x0 + geo.pinned_w,
-                         geo.status.y0},
-                        c.border);
-        }
+      }
+      pc.text.DrawFitted(list, cell, th.fonts.sans, size, box, fg, align);
+      if (info.explained && s.Explain(row, col.column, scratch)) {
+        // A small corner tick marks cells with an explanation.
+        list.FillRect({span.x1 - 5, y + 1, span.x1 - 1, y + 3}, c.accent);
+        list.FillRect({span.x1 - 3, y + 1, span.x1 - 1, y + 5}, c.accent);
+      }
+      list.PopClip();
+    }
+    // The cursor.
+    if (state.cursor && *state.cursor == key) {
+      list.StrokeRect(row_rect.Inset(0.5F), focused ? c.focus : c.border, 1.0F);
+    }
+  }
+  if (count == 0) {
+    const bool filtered =
+        !view.view().query.search.empty() || !view.view().query.filters.empty();
+    pc.text.DrawFitted(list,
+                       busy ? "Searching\xE2\x80\xA6"
+                            : (filtered ? "No rows match" : "No rows"),
+                       th.fonts.sans,
+                       font,
+                       {geo.rows.x0,
+                        geo.rows.y0 + 12,
+                        geo.rows.x1,
+                        geo.rows.y0 + 12 + geo.row_h},
+                       c.text_muted,
+                       text::HAlign::kCenter);
+  }
+  list.PopClip();
 
-        // Status bar: counts and progress.
-        list.FillRect(geo.status, c.surface_raised);
-        list.FillRect(
-            {geo.status.x0, geo.status.y0, geo.status.x1, geo.status.y0 + 1},
-            c.divider);
-        std::string status;
-        data::FormatInt(count, true, status);
-        if (count != static_cast<std::int64_t>(s.RowCount())) {
-          status += " of ";
-          data::FormatInt(s.RowCount(), true, status);
-        }
-        status += count == 1 ? " row" : " rows";
-        if (!state.selection.Empty()) {
-          status += "  \xC2\xB7  ";
-          if (state.selection.all) {
-            status += "all";
-          } else {
-            data::FormatInt(
-                static_cast<std::int64_t>(state.selection.keys.size()),
-                true,
-                status);
-          }
-          status += " selected";
-        }
-        if (busy) {
-          status += "  \xC2\xB7  updating\xE2\x80\xA6";
-        }
+  // Header.
+  list.FillRect(geo.header, c.surface_raised);
+  list.FillRect(
+      {geo.header.x0, geo.header.y1 - 1, geo.header.x1, geo.header.y1},
+      c.border);
+  for (const ColSpan &span : geo.cols) {
+    const GridColumn &col = state.columns[static_cast<std::size_t>(span.index)];
+    const ColumnInfo &info = infos2[col.column];
+    const Rect region = region_for(span);
+    const Rect head =
+        Rect{span.x0, geo.header.y0, span.x1, geo.header.y1 - 1}.Intersect(
+            region);
+    if (head.Empty()) {
+      continue;
+    }
+    list.PushClip(head);
+    if (state.dragging == span.index && state.drag_moved) {
+      list.FillRect(head, c.active);
+    }
+    // Sort indicator (with the key's rank when sorting by several).
+    float right = span.x1 - kCellPad;
+    const auto &sort = state.query.sort;
+    for (std::size_t k = 0; k < sort.size(); ++k) {
+      if (sort[k].column != col.column) {
+        continue;
+      }
+      const float cx = right - 4;
+      const float cy = std::round(head.Center().y);
+      const bool up = sort[k].direction == SortDirection::kAscending;
+      const float d = up ? -1.0F : 1.0F;
+      list.Line({cx - 4, cy - 2 * d}, {cx, cy + 2 * d}, 1.5F, c.primary);
+      list.Line({cx, cy + 2 * d}, {cx + 4, cy - 2 * d}, 1.5F, c.primary);
+      right -= 12;
+      if (sort.size() > 1) {
+        const std::string rank = std::to_string(k + 1);
         pc.text.DrawFitted(list,
-                           status,
+                           rank,
                            th.fonts.sans,
-                           small,
-                           {geo.status.x0 + kCellPad,
-                            geo.status.y0,
-                            geo.status.x1 - kCellPad,
-                            geo.status.y1},
-                           c.text_muted);
-        // Horizontal position indicator.
-        const float avail = geo.body.Width() - geo.pinned_w;
-        if (geo.content_w - geo.pinned_w > avail && avail > 0) {
-          const float scroll_w = geo.content_w - geo.pinned_w;
-          const float w = std::max(24.0F, avail * avail / scroll_w);
-          const float x = geo.body.x0 + geo.pinned_w +
-                          (avail - w) * state.scroll_x / (scroll_w - avail);
-          list.FillRect({x, geo.status.y1 - 4, x + w, geo.status.y1 - 1},
-                        c.text_disabled,
-                        gfx::CornerRadii::All(1.5F));
-        }
-      });
-  detail::ScrollBar(ctx, bar_id, state.scroll_y, content_h, viewport);
-  ctx.Close();
+                           small - 2,
+                           {right - 8, head.y0, right, head.y1},
+                           c.primary,
+                           text::HAlign::kRight);
+        right -= 10;
+      }
+    }
+    // Filter marker.
+    for (const data::Filter &f : state.query.filters) {
+      if (f.column == col.column) {
+        list.FillCircle({right - 3, std::round(head.Center().y)}, 3, c.accent);
+        right -= 10;
+        break;
+      }
+    }
+    const text::HAlign align =
+        IsRightAligned(info) ? text::HAlign::kRight : text::HAlign::kLeft;
+    pc.text.DrawFitted(list,
+                       info.title,
+                       th.fonts.bold,
+                       small,
+                       {span.x0 + kCellPad, head.y0, right, head.y1},
+                       c.text_muted,
+                       align);
+    list.PopClip();
+    // Column edge.
+    if (span.x1 > region.x0 && span.x1 <= region.x1) {
+      list.FillRect(
+          {span.x1 - 1, geo.header.y0 + 5, span.x1, geo.header.y1 - 5},
+          c.divider);
+    }
+  }
+  if (geo.pinned_w > 0) {
+    list.FillRect({geo.body.x0 + geo.pinned_w - 1,
+                   geo.body.y0,
+                   geo.body.x0 + geo.pinned_w,
+                   geo.status.y0},
+                  c.border);
+  }
 
-  // Header menu: sort, filter, pin, hide, autosize.
+  // Status bar: counts and progress.
+  list.FillRect(geo.status, c.surface_raised);
+  list.FillRect(
+      {geo.status.x0, geo.status.y0, geo.status.x1, geo.status.y0 + 1},
+      c.divider);
+  std::string status;
+  data::FormatInt(count, true, status);
+  if (count != static_cast<std::int64_t>(s.RowCount())) {
+    status += " of ";
+    data::FormatInt(s.RowCount(), true, status);
+  }
+  status += count == 1 ? " row" : " rows";
+  if (!state.selection.Empty()) {
+    status += "  \xC2\xB7  ";
+    if (state.selection.all) {
+      status += "all";
+    } else {
+      data::FormatInt(
+          static_cast<std::int64_t>(state.selection.keys.size()), true, status);
+    }
+    status += " selected";
+  }
+  if (busy) {
+    status += "  \xC2\xB7  updating\xE2\x80\xA6";
+  }
+  pc.text.DrawFitted(list,
+                     status,
+                     th.fonts.sans,
+                     small,
+                     {geo.status.x0 + kCellPad,
+                      geo.status.y0,
+                      geo.status.x1 - kCellPad,
+                      geo.status.y1},
+                     c.text_muted);
+  // Horizontal position indicator.
+  const float avail = geo.body.Width() - geo.pinned_w;
+  if (geo.content_w - geo.pinned_w > avail && avail > 0) {
+    const float scroll_w = geo.content_w - geo.pinned_w;
+    const float w = std::max(24.0F, avail * avail / scroll_w);
+    const float x = geo.body.x0 + geo.pinned_w +
+                    (avail - w) * state.scroll_x / (scroll_w - avail);
+    list.FillRect({x, geo.status.y1 - 4, x + w, geo.status.y1 - 1},
+                  c.text_disabled,
+                  gfx::CornerRadii::All(1.5F));
+  }
+}
+
+// The header menu of a column: sort, filter, pin, hide, autosize.
+void HeaderMenu(Context &ctx, data::TableView &view, GridState &state,
+                const Geometry &g, Id menu_id, std::size_t visible_count) {
+  const Theme &t = ctx.theme();
+  const auto infos = view.source().Columns();
+  const Vec2 mouse = ctx.mouse();
+  const double viewport = std::max(0.0F, g.rows.Height());
   if (ctx.IsPopupOpen(menu_id) && state.menu_column >= 0 &&
       state.menu_column < static_cast<int>(state.columns.size())) {
     GridColumn &col =
@@ -1196,11 +1000,11 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
                             static_cast<std::int64_t>(viewport / g.row_h) + 1);
       close = true;
     }
-    if (visible.size() > 1 && item("Hide column")) {
+    if (visible_count > 1 && item("Hide column")) {
       col.visible = false;
       close = true;
     }
-    if (visible.size() < state.columns.size() && item("Show all columns")) {
+    if (visible_count < state.columns.size() && item("Show all columns")) {
       for (GridColumn &c : state.columns) {
         c.visible = true;
       }
@@ -1212,6 +1016,232 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
       ctx.ClosePopup(menu_id);
     }
   }
+}
+
+}  // namespace
+
+auto DefaultColumns(const data::TableSource &source)
+    -> std::vector<GridColumn> {
+  std::vector<GridColumn> columns;
+  const auto infos = source.Columns();
+  for (std::size_t i = 0; i < infos.size(); ++i) {
+    GridColumn c;
+    c.column = static_cast<int>(i);
+    c.width = infos[i].type == ColumnType::kText ? 180.0F
+              : infos[i].IsNumeric()             ? 110.0F
+                                                 : 90.0F;
+    if (infos[i].type == ColumnType::kEnum) {
+      c.renderer = CellRenderer::kBadge;
+    }
+    columns.push_back(c);
+  }
+  return columns;
+}
+
+auto SelectedRows(const data::TableView &view, const GridState &state)
+    -> std::vector<RowIndex> {
+  std::vector<RowIndex> out;
+  const auto rows = view.rows();
+  if (state.selection.Empty()) {
+    if (state.cursor_pos >= 0 &&
+        state.cursor_pos < static_cast<std::int64_t>(rows.size())) {
+      out.push_back(rows[static_cast<std::size_t>(state.cursor_pos)]);
+    }
+    return out;
+  }
+  for (const RowIndex r : rows) {
+    if (state.selection.Contains(view.source().RowKey(r))) {
+      out.push_back(r);
+    }
+  }
+  return out;
+}
+
+auto CopyAsTsv(const data::TableView &view, const GridState &state)
+    -> std::string {
+  const data::TableSource &src = view.source();
+  std::string out;
+  std::vector<int> cols;
+  for (const GridColumn &c : state.columns) {
+    if (c.visible) {
+      cols.push_back(c.column);
+    }
+  }
+  auto clean = [](std::string_view s, std::string &o) {
+    for (const char ch : s) {
+      o.push_back(ch == '\t' || ch == '\n' || ch == '\r' ? ' ' : ch);
+    }
+  };
+  for (std::size_t i = 0; i < cols.size(); ++i) {
+    if (i > 0) {
+      out.push_back('\t');
+    }
+    clean(src.Columns()[cols[i]].title, out);
+  }
+  out.push_back('\n');
+  std::string cell;
+  for (const RowIndex r : SelectedRows(view, state)) {
+    for (std::size_t i = 0; i < cols.size(); ++i) {
+      if (i > 0) {
+        out.push_back('\t');
+      }
+      src.FormatCell(r, cols[i], cell);
+      clean(cell, out);
+    }
+    out.push_back('\n');
+  }
+  return out;
+}
+
+auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
+              GridState &state, LayoutSpec layout) -> GridResult {
+  const Theme &t = ctx.theme();
+  GridResult result;
+  const Id id = ctx.GetId(label);
+  const Id bar_id = HashCombine(id, 0x76626172ULL);
+  const Id menu_id = HashCombine(id, 0x6D656E75ULL);
+  const Id tip_id = HashCombine(id, 0x746970ULL);
+
+  if (state.columns.empty()) {
+    state.columns = DefaultColumns(view.source());
+  }
+  if (view.query() != state.query) {
+    view.SetQuery(state.query);
+  }
+  view.Update(ctx.time());
+  SyncCursor(view, state);
+
+  const auto rows = view.rows();
+  const auto n = static_cast<std::int64_t>(rows.size());
+  const data::TableSource &src = view.source();
+  const auto infos = src.Columns();
+  const Interaction it = ctx.Interact(id);
+  const Rect body = it.rect;
+  const Geometry g = MakeGeometry(state, body, t);
+  const double viewport = std::max(0.0F, g.rows.Height());
+  const int page = std::max(1, static_cast<int>(viewport / g.row_h) - 1);
+  const std::uint64_t selection_before =
+      state.selection.keys.size() + (state.selection.all ? 1ULL << 62U : 0);
+  const std::optional<std::uint64_t> cursor_before = state.cursor;
+  const data::Query query_before = state.query;
+  bool reveal_cursor = false;
+
+  // Visible display columns, for cursor movement.
+  std::vector<int> visible;
+  for (std::size_t i = 0; i < state.columns.size(); ++i) {
+    if (state.columns[i].visible) {
+      visible.push_back(static_cast<int>(i));
+    }
+  }
+  state.cursor_col = std::clamp(
+      state.cursor_col, 0, std::max(0, static_cast<int>(visible.size()) - 1));
+
+  if (ctx.HasFocus(id)) {
+    reveal_cursor = HandleKeys(ctx, view, state, visible, page, result);
+  }
+
+  if (HandlePointer(ctx, view, state, it, g, visible, id, menu_id, result)) {
+    reveal_cursor = true;
+  }
+  const Vec2 mouse = ctx.mouse();
+
+  // Scrolling.
+  const Vec2 wheel = ctx.Wheel(id);
+  if ((ctx.mods() & kModShift) != 0 && wheel.x == 0.0F) {
+    state.scroll_x -= wheel.y * 40.0F;
+  } else {
+    state.scroll_y -= wheel.y * g.row_h * 3.0;
+    state.scroll_x -= wheel.x * 40.0F;
+  }
+  const double content_h = static_cast<double>(n) * g.row_h;
+  if (reveal_cursor && state.cursor_pos >= 0) {
+    const double top = static_cast<double>(state.cursor_pos) * g.row_h;
+    if (top < state.scroll_y) {
+      state.scroll_y = top;
+    } else if (top + g.row_h > state.scroll_y + viewport) {
+      state.scroll_y = top + g.row_h - viewport;
+    }
+    if (!visible.empty() && body.Width() > 0) {
+      const GridColumn &c = state.columns[static_cast<std::size_t>(
+          visible[static_cast<std::size_t>(state.cursor_col)])];
+      if (!c.pinned) {
+        float x = 0.0F;
+        for (const ColSpan &s : g.cols) {
+          if (s.index == visible[static_cast<std::size_t>(state.cursor_col)]) {
+            x = s.x0 + state.scroll_x - (body.x0 + g.pinned_w);
+          }
+        }
+        const float avail = body.Width() - g.pinned_w;
+        if (x < state.scroll_x) {
+          state.scroll_x = x;
+        } else if (x + c.width > state.scroll_x + avail) {
+          state.scroll_x = x + c.width - avail;
+        }
+      }
+    }
+  }
+  state.scroll_y =
+      std::clamp(state.scroll_y, 0.0, std::max(0.0, content_h - viewport));
+  state.scroll_x = std::clamp(
+      state.scroll_x, 0.0F, std::max(0.0F, g.content_w - body.Width()));
+
+  // Hover, for explanation tooltips.
+  std::optional<data::Explanation> tooltip;
+  {
+    const Hit hit = it.hovered ? HitAt(g, mouse, state.scroll_y, n) : Hit{};
+    if (hit.kind == Hit::Kind::kCell) {
+      if (hit.pos != state.hover_pos || hit.col != state.hover_col) {
+        state.hover_pos = hit.pos;
+        state.hover_col = hit.col;
+        state.hover_since = ctx.time();
+      }
+      const GridColumn &c = state.columns[static_cast<std::size_t>(hit.col)];
+      data::Explanation e;
+      if (infos[c.column].explained &&
+          ctx.time() - state.hover_since >= kHoverDelay &&
+          src.Explain(rows[static_cast<std::size_t>(hit.pos)], c.column, e)) {
+        tooltip = std::move(e);
+      }
+    } else {
+      state.hover_pos = -1;
+      state.hover_col = -1;
+    }
+  }
+
+  // Nodes: the body (painted by hand) and the scroll bar.
+  if (layout.width.kind == SizeKind::kFit) {
+    layout.width = SizeSpec::Grow();
+  }
+  if (layout.height.kind == SizeKind::kFit) {
+    layout.height = SizeSpec::Grow();
+  }
+  NodeDesc outer;
+  outer.layout = layout;
+  outer.layout.mode = LayoutMode::kRow;
+  outer.style.fill = t.colors.surface;
+  outer.style.border = t.colors.border;
+  outer.style.border_width = t.metrics.border_width;
+  outer.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+  outer.layout.padding = Padding::All(1);
+  ctx.Open(outer);
+  NodeDesc grid;
+  grid.id = id;
+  grid.layout.width = SizeSpec::Grow();
+  grid.layout.height = SizeSpec::Grow();
+  grid.flags = kNodeInteractive | kNodeFocusable | kNodeWheel | kNodeClip |
+               kNodeFocusRing;
+  const int node = ctx.Open(grid);
+  ctx.Close();
+  const bool focused = ctx.HasFocus(id);
+  const bool busy = view.busy();
+  ctx.AddPainter(
+      node, [&view, &state, focused, busy](PaintContext &pc, const Rect &r) {
+        PaintGrid(pc, r, view, state, focused, busy);
+      });
+  detail::ScrollBar(ctx, bar_id, state.scroll_y, content_h, viewport);
+  ctx.Close();
+
+  HeaderMenu(ctx, view, state, g, menu_id, visible.size());
 
   if (tooltip) {
     ctx.BeginLayer(LayerKind::kTooltip, tip_id);
