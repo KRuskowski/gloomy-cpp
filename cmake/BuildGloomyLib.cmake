@@ -58,6 +58,7 @@ add_library(GlText OBJECT
 )
 
 add_library(GlUi OBJECT
+  src/gloomy/ui/canvas.cc
   src/gloomy/ui/chart.cc
   src/gloomy/ui/context.cc
   src/gloomy/ui/data_grid.cc
