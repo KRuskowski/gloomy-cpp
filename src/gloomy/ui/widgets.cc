@@ -219,6 +219,32 @@ auto Button(Context &ctx, std::string_view label, ButtonKind kind) -> bool {
   return activated;
 }
 
+void DisabledButton(Context &ctx, std::string_view label,
+                    std::string_view reason) {
+  const Theme &t = ctx.theme();
+  const Id id = ctx.GetId(label);
+  // Interact only for the tooltip's hover.
+  ctx.Interact(id);
+  NodeDesc desc;
+  desc.id = id;
+  desc.layout.mode = LayoutMode::kRow;
+  desc.layout.height = SizeSpec::Fixed(t.metrics.control_height);
+  desc.layout.padding = Padding::Xy(t.metrics.padding_x * 1.5F, 0);
+  desc.layout.align = Align::kCenter;
+  desc.layout.justify = Justify::kCenter;
+  desc.style.fill = t.colors.surface;
+  desc.style.border = t.colors.border;
+  desc.style.border_width = t.metrics.border_width;
+  desc.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+  desc.flags = kNodeInteractive;
+  ctx.Open(desc);
+  ctx.Text(TextOf(ctx, DisplayText(label), t.colors.text_disabled));
+  ctx.Close();
+  if (!reason.empty()) {
+    Tooltip(ctx, id, reason);
+  }
+}
+
 namespace {
 
 // Shared body of checkbox and radio button.

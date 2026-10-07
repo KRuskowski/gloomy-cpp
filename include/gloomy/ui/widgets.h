@@ -64,6 +64,12 @@ enum class ButtonKind : std::uint8_t { kNormal, kPrimary, kFlat };
 auto Button(Context &ctx, std::string_view label,
             ButtonKind kind = ButtonKind::kNormal) -> bool;
 
+/// A button that cannot be pressed now: drawn greyed out, never activates,
+/// and says why in a tooltip (`reason`, empty for none), so the action
+/// stays visible where it will be (answer-first: show what is missing).
+void DisabledButton(Context &ctx, std::string_view label,
+                    std::string_view reason);
+
 /// @return True when toggled.
 auto Checkbox(Context &ctx, std::string_view label, bool &value) -> bool;
 
