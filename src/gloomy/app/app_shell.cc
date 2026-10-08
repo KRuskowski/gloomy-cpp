@@ -142,6 +142,10 @@ auto Windowed(const ShellOptions &options) -> int {
   bool running = true;
   while (running) {
     events.clear();
+    if (options.quit_after_frames >= 0 &&
+        info.frame == options.quit_after_frames) {
+      platform::SdlWindow::PostQuit();
+    }
     running =
         (*window)->PollEvents(events) && !(options.quit && options.quit());
     auto frame = swapchain.BeginFrame((*window)->DrawableExtent());
@@ -184,6 +188,9 @@ void ParseShellArgs(int argc, char **argv, ShellOptions &options) {
       }
     } else if (std::strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
       options.screenshot_frames = std::atoi(argv[++i]);
+    } else if (std::strcmp(argv[i], "--quit-after-frames") == 0 &&
+               i + 1 < argc) {
+      options.quit_after_frames = std::atoll(argv[++i]);
     } else if (std::strcmp(argv[i], "--no-validation") == 0) {
       options.validation = false;
     }

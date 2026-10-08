@@ -54,12 +54,16 @@ struct ShellOptions {
       headless_input;
   /// Windowed only: the app asks to quit when this returns true.
   std::function<bool()> quit;
+  /// Windowed only: after this many frames the shell posts a quit event, as
+  /// closing the window does (tests of the exit path); negative: never.
+  std::int64_t quit_after_frames = -1;
   /// Declares the UI for one frame.
   std::function<void(ui::Context &, const FrameInfo &)> frame;
 };
 
-/// Parses --screenshot <png>, --size WxH, --frames N and --no-validation
-/// into `options`; other arguments are left for the app.
+/// Parses --screenshot <png>, --size WxH, --frames N, --quit-after-frames N
+/// and --no-validation into `options`; other arguments are left for the
+/// app.
 void ParseShellArgs(int argc, char **argv, ShellOptions &options);
 
 /// Runs the app in an SDL2 window, or headless for a screenshot.
