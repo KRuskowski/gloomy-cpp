@@ -25,6 +25,11 @@ TEST(AppShellTest, ParsesKeyNames) {
   EXPECT_EQ(ParseKeyName("Shift+Tab").mods, ui::kModShift);
   EXPECT_EQ(ParseKeyName("Banana").key, ui::Key::kNone);
   EXPECT_EQ(ParseKeyName("F13").key, ui::Key::kNone);
+  EXPECT_EQ(ParseKeyName("W").type, ui::InputEvent::Type::kKeyDown);
+  const ui::InputEvent release = ParseKeyName("Release+W");
+  EXPECT_EQ(release.type, ui::InputEvent::Type::kKeyUp);
+  EXPECT_EQ(release.key, ui::Key::kW);
+  EXPECT_EQ(ParseKeyName("Release+Nope").key, ui::Key::kNone);
 }
 
 TEST(AppShellTest, ParsesKeyLists) {

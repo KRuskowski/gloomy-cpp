@@ -1,6 +1,7 @@
 #ifndef GLOOMY_UI_INPUT_H_
 #define GLOOMY_UI_INPUT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -81,6 +82,10 @@ enum class Key : std::uint16_t {
   kF11,
   kF12,
 };
+
+/// Number of Key values, for tables indexed by key.
+inline constexpr std::size_t kKeyCount =
+    static_cast<std::size_t>(Key::kF12) + 1;
 
 /// Modifier key bits.
 enum Mod : std::uint8_t {

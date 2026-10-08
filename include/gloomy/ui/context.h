@@ -1,6 +1,7 @@
 #ifndef GLOOMY_UI_CONTEXT_H_
 #define GLOOMY_UI_CONTEXT_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -243,6 +244,15 @@ class Context {
   /// Like ConsumeKey(), but reports the modifiers instead of matching them.
   auto ConsumeKeyAnyMods(Key key, std::uint8_t &mods) -> bool;
 
+  /// Whether `key` is held down: pressed and not released yet, as of this
+  /// frame's events. For continuous control (steering a ship), where
+  /// ConsumeKey() sees only presses and the platform's key repeat.
+  auto IsKeyDown(Key key) const -> bool;
+
+  /// Forgets every held key, e.g. when a mode that reads them is left or
+  /// the window loses focus.
+  void ReleaseKeys() { held_keys_.fill(false); }
+
   /// Text typed this frame; taking it empties it.
   auto TakeText() -> std::string;
 
@@ -420,6 +430,8 @@ class Context {
   double last_click_time_ = -1.0;
   std::unordered_map<Id, Vec2> wheel_;
   std::vector<KeyPress> keys_;
+  /// Held keys, indexed by Key.
+  std::array<bool, kKeyCount> held_keys_{};
   std::string text_input_;
   Id focus_ = kNoId;
   bool focus_visible_ = false;
