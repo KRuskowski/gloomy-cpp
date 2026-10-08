@@ -109,6 +109,56 @@ TEST(TableViewTest, RefreshesWhenTheSourceChanges) {
   EXPECT_EQ(view.rows().size(), 11U);
 }
 
+/// A source whose rows can also go away (an app's table rebuilt from a
+/// smaller world).
+class ShrinkingSource : public TableSource {
+ public:
+  explicit ShrinkingSource(RowIndex rows) : rows_(rows) {}
+
+  void SetRows(RowIndex rows) {
+    rows_ = rows;
+    ++version_;
+  }
+
+  auto RowCount() const -> RowIndex override { return rows_; }
+
+  auto Columns() const -> std::span<const ColumnInfo> override {
+    return columns_;
+  }
+
+  auto Version() const -> std::uint64_t override { return version_; }
+
+  auto GetInt64(int, RowIndex row) const -> std::int64_t override {
+    EXPECT_LT(row, rows_) << "read past the end";
+    return row;
+  }
+
+ private:
+  RowIndex rows_;
+  std::uint64_t version_ = 1;
+  std::vector<ColumnInfo> columns_ = {
+      {.name = "n", .title = "N", .type = ColumnType::kInt64}};
+};
+
+TEST(TableViewTest, ASourceThatShrankIsQueriedAtOnce) {
+  auto source = std::make_shared<ShrinkingSource>(20);
+  TableView view(source);
+  view.SetRefreshInterval(10.0);
+  view.Update(0.0);
+  ASSERT_EQ(view.rows().size(), 20U);
+  source->SetRows(5);
+  // Within the refresh interval, yet the rows must not point past the end.
+  view.Update(0.1);
+  ASSERT_EQ(view.rows().size(), 5U);
+  for (const RowIndex r : view.rows()) {
+    EXPECT_LT(r, source->RowCount());
+  }
+  // Growing waits for the interval as before.
+  source->SetRows(8);
+  EXPECT_FALSE(view.Update(0.2));
+  EXPECT_EQ(view.rows().size(), 5U);
+}
+
 TEST(TableViewTest, SlowQueriesAreNotRestartedByRefreshes) {
   auto t = MakeTable(300000);
   TableView view(t);

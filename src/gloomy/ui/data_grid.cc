@@ -216,7 +216,13 @@ auto LineRow(const data::TableView &view, const GridState &state,
   if (l.group >= 0) {
     return std::nullopt;
   }
-  return view.rows()[l.pos];
+  // Rows of a result computed before the source shrank (a query still
+  // running) may point past its end.
+  const RowIndex row = view.rows()[l.pos];
+  if (row >= view.source().RowCount()) {
+    return std::nullopt;
+  }
+  return row;
 }
 
 // Cursor key of a line: the RowKey, or the group id with kGroupKeyBit.
@@ -748,9 +754,8 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
       SetCursor(view, state, hit.pos);
       result.context_row = r;
       result.context_column =
-          hit.col >= 0
-              ? state.columns[static_cast<std::size_t>(hit.col)].column
-              : -1;
+          hit.col >= 0 ? state.columns[static_cast<std::size_t>(hit.col)].column
+                       : -1;
     }
   }
   return reveal_cursor;

@@ -210,8 +210,11 @@ auto TableView::Update(double time) -> bool {
   // A data change re-queries, throttled, and never cancels a job in
   // flight (that job would never finish while data keeps changing); its
   // result is followed by another refresh if the data moved on.
+  // A source that shrank under the rows may leave them pointing past its
+  // end: query again at once rather than after the refresh interval.
+  const bool shrank = current_->source_rows > source_->RowCount();
   if (!dirty_ && !pending_ && current_->version != source_->Version() &&
-      time - last_refresh_ >= refresh_seconds_) {
+      (shrank || time - last_refresh_ >= refresh_seconds_)) {
     dirty_ = true;
   }
   if (dirty_) {

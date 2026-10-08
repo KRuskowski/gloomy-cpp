@@ -105,6 +105,10 @@ void TableProvider::Collect(int limit, std::vector<SearchHit> &out) {
   std::string cell;
   for (std::size_t i = 0; i < rows.size() && static_cast<int>(i) < limit; ++i) {
     const data::RowIndex r = rows[i];
+    if (r >= src.RowCount()) {
+      // The source shrank since the query; the next update runs it again.
+      continue;
+    }
     SearchHit hit;
     src.FormatCell(r, label_column_, hit.label);
     for (const int c : context_columns_) {
