@@ -89,6 +89,8 @@ void Context::BeginFrame(Vec2 viewport, std::span<const InputEvent> events,
   clicked_ = kNoId;
   double_clicked_ = kNoId;
   right_clicked_ = kNoId;
+  right_pressed_ = kNoId;
+  right_released_ = false;
   wheel_.clear();
   keys_.clear();
   text_input_.clear();
@@ -134,6 +136,12 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         break;
       case InputEvent::Type::kPointerDown: {
         mouse_ = e.pos;
+        if (e.button == PointerButton::kRight) {
+          right_pressed_ = HitTest(mouse_, kNodeInteractive | kNodeFocusable);
+          right_down_ = true;
+          right_press_pos_ = mouse_;
+          break;
+        }
         if (e.button != PointerButton::kLeft) {
           break;
         }
@@ -178,6 +186,8 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         const Id hit = HitTest(mouse_, kNodeInteractive | kNodeFocusable);
         if (e.button == PointerButton::kRight) {
           right_clicked_ = hit;
+          right_down_ = false;
+          right_released_ = true;
           break;
         }
         if (e.button != PointerButton::kLeft) {
@@ -334,7 +344,8 @@ void Context::EndFrame() {
     list_ptrs_.push_back(&list);
     prev_layer_rects_.push_back(tree_.node(layers_[i].root).rect);
     prev_layer_ids_.push_back(layers_[i].id);
-    if (i > 0 && layers_[i].kind == LayerKind::kModal) {
+    if (i > 0 && (layers_[i].kind == LayerKind::kModal ||
+                  layers_[i].kind == LayerKind::kOverlay)) {
       prev_modal_layer_ = static_cast<int>(i);
     }
   }
@@ -370,6 +381,7 @@ void Context::LayoutLayer(const Layer &layer) {
   }
   switch (layer.kind) {
     case LayerKind::kModal:
+    case LayerKind::kOverlay:
       tree_.Compute(layer.root, screen, measurer);
       break;
     case LayerKind::kFloating:
@@ -615,6 +627,13 @@ void Context::BeginLayer(LayerKind kind, Id id, const Rect &anchor) {
       // The scrim swallows clicks.
       root.flags = kNodeInteractive;
       break;
+    case LayerKind::kOverlay:
+      root.layout.mode = LayoutMode::kStack;
+      root.layout.width = SizeSpec::Fixed(viewport_.x);
+      root.layout.height = SizeSpec::Fixed(viewport_.y);
+      // Transparent, but it swallows clicks.
+      root.flags = kNodeInteractive;
+      break;
     case LayerKind::kPopup:
     case LayerKind::kTooltip:
     case LayerKind::kFloating:
@@ -663,6 +682,7 @@ auto Context::Interact(Id id) const -> Interaction {
   result.clicked = clicked_ == id;
   result.double_clicked = double_clicked_ == id;
   result.right_clicked = right_clicked_ == id;
+  result.right_pressed = right_pressed_ == id;
   result.focused = focus_ == id;
   result.local = mouse_ - result.rect.Min();
   if (result.pressed) {

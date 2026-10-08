@@ -105,6 +105,8 @@ struct CanvasResult {
   bool clicked = false;
   bool double_clicked = false;
   bool right_clicked = false;
+  /// The right button went down over the canvas this frame.
+  bool right_pressed = false;
   /// The pointer in world coordinates (valid when hovered or clicked).
   WorldPoint pointer;
   Vec2 pointer_screen;

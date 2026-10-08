@@ -75,6 +75,7 @@ add_library(GlUi OBJECT
   src/gloomy/ui/layout.cc
   src/gloomy/ui/navigation.cc
   src/gloomy/ui/overlays.cc
+  src/gloomy/ui/radial_menu.cc
   src/gloomy/ui/summary.cc
   src/gloomy/ui/theme.cc
   src/gloomy/ui/timeline.cc

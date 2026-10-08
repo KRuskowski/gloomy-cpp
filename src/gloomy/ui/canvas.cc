@@ -108,6 +108,7 @@ auto Canvas(Context &ctx, std::string_view label, CanvasState &state,
   result.clicked = it.clicked && !state.dragged;
   result.double_clicked = it.double_clicked;
   result.right_clicked = it.right_clicked;
+  result.right_pressed = it.right_pressed;
   if (it.clicked) {
     state.dragged = false;
   }
