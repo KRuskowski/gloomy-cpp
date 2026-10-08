@@ -730,6 +730,7 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
     } else if (hit.kind == Hit::Kind::kCell) {
       if (const auto row = LineRow(view, state, hit.pos)) {
         result.activated = true;
+        result.double_clicked = true;
         result.row = row;
       }
     }

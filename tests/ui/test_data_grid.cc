@@ -164,7 +164,20 @@ TEST_F(DataGridTest, KeyboardSelection) {
       << "Escape cleared the selection, not the focus";
   Frame(UiHarness::Key(Key::kEnter));
   EXPECT_TRUE(result_.activated);
+  EXPECT_FALSE(result_.double_clicked) << "Enter";
   EXPECT_EQ(result_.row, 999U);
+}
+
+TEST_F(DataGridTest, DoubleClickActivatesAndSaysSo) {
+  Frame();
+  Frame(UiHarness::Click(RowPoint(4)));
+  EXPECT_FALSE(result_.activated);
+  Frame(UiHarness::Click(RowPoint(4)));
+  EXPECT_TRUE(result_.activated);
+  EXPECT_TRUE(result_.double_clicked);
+  EXPECT_EQ(result_.row, view_.rows()[4]);
+  Frame();
+  EXPECT_FALSE(result_.double_clicked);
 }
 
 TEST_F(DataGridTest, MouseSelection) {
