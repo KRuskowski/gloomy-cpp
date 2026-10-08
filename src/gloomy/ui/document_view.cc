@@ -527,6 +527,8 @@ auto DocumentView(Context &ctx, std::string_view label,
   // at the top stays put while heights above it change.
   const double total = FenwickPrefix(st.fenwick, doc.size());
   st.scroll = std::clamp(st.scroll, 0.0, std::max(0.0, total - viewport));
+  ctx.WheelRange(
+      id, st.scroll > 0.0, viewport > 0.0 && st.scroll < total - viewport);
   if (doc.size() > 0) {
     const std::uint32_t top = TopBlock(st);
     const double into = st.scroll - FenwickPrefix(st.fenwick, top);

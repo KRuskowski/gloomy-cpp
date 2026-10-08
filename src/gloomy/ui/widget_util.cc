@@ -71,6 +71,14 @@ auto ScrollBar(Context &ctx, Id id, double &offset, double content,
       }
     }
   } else {
+    if (it.clicked && !state.dragging && max_offset > 0.0) {
+      // Pressed and released within one frame (a quick click at a low
+      // frame rate): page as a press on the track would.
+      const Rect thumb = ThumbRect(it.rect, offset, content, viewport);
+      if (!thumb.Contains(ctx.mouse())) {
+        offset += (ctx.mouse().y < thumb.y0 ? -1.0 : 1.0) * viewport;
+      }
+    }
     state.dragging = false;
   }
   offset = std::clamp(offset, 0.0, max_offset);

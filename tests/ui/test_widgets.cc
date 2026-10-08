@@ -379,6 +379,111 @@ TEST(WidgetsTest, ScrollAreaScrollsWithWheel) {
   EXPECT_LT(offset, 50 * 20.0);
 }
 
+// A list inside a scrolled panel: the wheel over the list scrolls the list
+// while it can, then the panel; a list too short to scroll never stops the
+// panel scrolling.
+TEST(WidgetsTest, WheelPassesToThePanelWhenAListCannotScroll) {
+  UiHarness h;
+  int items = 3;
+  ListState list;
+  auto ui = [&](Context &ctx) {
+    LayoutSpec layout;
+    layout.width = SizeSpec::Fixed(200);
+    layout.height = SizeSpec::Fixed(200);
+    BeginScroll(ctx, "##panel", layout);
+    LayoutSpec list_layout;
+    list_layout.height = SizeSpec::Fixed(100);
+    List(
+        ctx,
+        "##list",
+        list,
+        items,
+        [](int) -> std::string_view { return "item"; },
+        list_layout);
+    for (int i = 0; i < 50; ++i) {
+      Label(ctx, "Line " + std::to_string(i));
+    }
+    EndScroll(ctx);
+  };
+  auto panel_offset = [&] {
+    double offset = 0.0;
+    h.Frame([&](Context &ctx) {
+      ui(ctx);
+      offset = ScrollOffset(ctx, "##panel");
+    });
+    return offset;
+  };
+  auto wheel_over_list = [&](float lines) {
+    // The list's place in the panel's coordinates, from the last layout.
+    h.ctx().PushId("##panel");
+    h.ctx().PushId("##content");
+    const Vec2 c = h.Center(h.ctx().GetId("##list"));
+    h.ctx().PopId();
+    h.ctx().PopId();
+    h.Frame(ui, {InputEvent::Move(c.x, c.y), InputEvent::Wheel(0, lines)});
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  wheel_over_list(-1);
+  EXPECT_GT(panel_offset(), 0.0) << "3 items do not scroll: the panel does";
+
+  // A long list scrolls itself first.
+  items = 100;
+  list.scroll = 0.0;
+  h.Frame([&](Context &ctx) {
+    ui(ctx);
+    ScrollOffset(ctx, "##panel") = 0.0;
+  });
+  h.Frame(ui);
+  h.Frame(ui);
+  wheel_over_list(-1);
+  EXPECT_GT(list.scroll, 0.0);
+  EXPECT_DOUBLE_EQ(panel_offset(), 0.0);
+  // At the list's end, the panel scrolls.
+  wheel_over_list(-1000);
+  h.Frame(ui);
+  EXPECT_GT(list.scroll, 1000.0);
+  wheel_over_list(-1);
+  EXPECT_GT(panel_offset(), 0.0);
+}
+
+TEST(WidgetsTest, ScrollAreaScrollsByDraggingTheBarAndClickingTheTrack) {
+  UiHarness h;
+  auto ui = [&](Context &ctx) {
+    LayoutSpec layout;
+    layout.width = SizeSpec::Fixed(200);
+    layout.height = SizeSpec::Fixed(100);
+    BeginScroll(ctx, "##log", layout);
+    for (int i = 0; i < 50; ++i) {
+      Label(ctx, "Line " + std::to_string(i));
+    }
+    EndScroll(ctx);
+  };
+  auto offset = [&] {
+    double o = 0.0;
+    h.Frame([&](Context &ctx) {
+      ui(ctx);
+      o = ScrollOffset(ctx, "##log");
+    });
+    return o;
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  const Rect area = h.ctx().LastRect(h.ctx().GetId("##log")).value();
+  const float x = area.x1 - 0.5F * h.ctx().theme().metrics.scrollbar_width;
+  // Drag the thumb (at the top) down by 30 pixels.
+  h.Frame(ui,
+          {InputEvent::Move(x, area.y0 + 4), InputEvent::Down(x, area.y0 + 4)});
+  h.Frame(ui, {InputEvent::Move(x, area.y0 + 20)});
+  h.Frame(ui, {InputEvent::Move(x, area.y0 + 34)});
+  h.Frame(ui, {InputEvent::Up(x, area.y0 + 34)});
+  const double dragged = offset();
+  EXPECT_GT(dragged, 100.0);
+  // A click on the track below the thumb pages down.
+  h.Frame(ui, UiHarness::Click({x, area.y1 - 3}));
+  EXPECT_GT(offset(), dragged + 50.0);
+}
+
 TEST(WidgetsTest, ModalBlocksInputBelow) {
   UiHarness h;
   bool base = false;

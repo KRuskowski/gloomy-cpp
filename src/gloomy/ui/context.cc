@@ -199,7 +199,7 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         break;
       }
       case InputEvent::Type::kWheel: {
-        const Id target = HitTest(mouse_, kNodeWheel);
+        const Id target = WheelTarget(mouse_, e.wheel);
         if (target != kNoId) {
           Vec2 &w = wheel_[target];
           w = w + e.wheel;
@@ -232,6 +232,36 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
     // Pressed widgets stay "active" while dragged off, but not hovered.
     hovered_ = kNoId;
   }
+}
+
+auto Context::WheelTarget(Vec2 p, Vec2 wheel) const -> Id {
+  // Bit the turn needs: up for positive y (content moves down), down for
+  // negative; horizontal turns go to the innermost node.
+  const std::uint8_t need = wheel.y > 0.0F ? 1U : (wheel.y < 0.0F ? 2U : 0U);
+  Id innermost = kNoId;
+  for (auto it = prev_hits_.rbegin(); it != prev_hits_.rend(); ++it) {
+    if (prev_modal_layer_ >= 0 && it->layer < prev_modal_layer_) {
+      break;
+    }
+    if ((it->flags & kNodeWheel) == 0 || !it->rect.Contains(p)) {
+      continue;
+    }
+    if (innermost == kNoId) {
+      innermost = it->id;
+    }
+    const auto range = prev_wheel_ranges_.find(it->id);
+    if (need == 0 || range == prev_wheel_ranges_.end() ||
+        (range->second & need) != 0) {
+      return it->id;
+    }
+  }
+  // Nobody can scroll that way: the innermost node gets it (and clamps).
+  return innermost;
+}
+
+void Context::WheelRange(Id id, bool can_up, bool can_down) {
+  wheel_ranges_[id] =
+      static_cast<std::uint8_t>((can_up ? 1U : 0U) | (can_down ? 2U : 0U));
 }
 
 auto Context::HitTest(Vec2 p, std::uint16_t flags) const -> Id {
@@ -325,6 +355,8 @@ void Context::EndFrame() {
   // This frame's results are what the next frame's input resolves against
   // (and what LastRect() reports from now on).
   prev_hits_.swap(hits_);
+  prev_wheel_ranges_.swap(wheel_ranges_);
+  wheel_ranges_.clear();
   prev_infos_.swap(infos_);
   prev_focusables_.swap(focusables_);
 }
