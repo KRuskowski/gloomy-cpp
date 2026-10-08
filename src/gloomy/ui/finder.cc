@@ -130,8 +130,13 @@ DocumentProvider::DocumentProvider(
     : name_(std::move(name)), doc_(doc), on_select_(std::move(on_select)) {}
 
 void DocumentProvider::SetQuery(std::string_view query) {
-  matches_.clear();
   terms_ = data::ParseTerms(query);
+  Match();
+}
+
+void DocumentProvider::Match() {
+  matches_.clear();
+  matched_version_ = doc_.version();
   const std::vector<std::string> &terms = terms_;
   if (terms.empty()) {
     return;
@@ -151,6 +156,10 @@ void DocumentProvider::SetQuery(std::string_view query) {
 }
 
 void DocumentProvider::Collect(int limit, std::vector<SearchHit> &out) {
+  if (doc_.version() != matched_version_) {
+    // The document changed since the query: its blocks are others.
+    Match();
+  }
   const auto blocks = doc_.blocks();
   for (std::size_t i = 0; i < matches_.size() && static_cast<int>(i) < limit;
        ++i) {
