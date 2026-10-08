@@ -111,6 +111,57 @@ TEST(CanvasPickTest, PrefersHigherLayersThenTheNearest) {
   EXPECT_FALSE(PickNearest(view, items, {5, 95}).has_value());
 }
 
+TEST(CanvasPickTest, PickAllOrdersByLayerThenDistance) {
+  CanvasView view;
+  view.rect = {0, 0, 100, 100};
+  view.zoom = 1.0;
+  const PickItem items[] = {
+      {.key = 1, .pos = {0, 0}, .radius = 20, .layer = 0},
+      {.key = 2, .pos = {3, 0}, .radius = 6, .layer = 1},
+      {.key = 3, .pos = {1, 0}, .radius = 20, .layer = 0},
+      {.key = 4, .pos = {30, 30}, .radius = 6, .layer = 2},
+      {.key = 5, .pos = {5, 0}, .radius = 20, .layer = 1},
+  };
+  EXPECT_EQ(PickAll(view, items, {50, 50}),
+            (std::vector<std::uint64_t>{2, 5, 1, 3}));
+  EXPECT_EQ(PickAll(view, items, {50, 50}).front(),
+            PickNearest(view, items, {50, 50}));
+  EXPECT_EQ(PickAll(view, items, {80, 80}), (std::vector<std::uint64_t>{4}));
+  EXPECT_TRUE(PickAll(view, items, {5, 95}).empty());
+}
+
+TEST(CanvasPickTest, ClicksAtOneSpotCycleThroughTheStack) {
+  PickCycle cycle;
+  EXPECT_FALSE(cycle.current().has_value());
+  EXPECT_EQ(cycle.Click({10, 10}, {7, 8, 9}), 7U);
+  EXPECT_EQ(cycle.Hint(), "1/3");
+  EXPECT_EQ(cycle.Click({11, 12}, {7, 8, 9}), 8U);
+  EXPECT_EQ(cycle.Hint(), "2/3");
+  // Moving items reorder by distance; the cycle keeps its order.
+  EXPECT_EQ(cycle.Click({10, 10}, {9, 7, 8}), 9U);
+  EXPECT_EQ(cycle.Click({10, 10}, {7, 8, 9}), 7U);
+  EXPECT_EQ(cycle.current(), 7U);
+  EXPECT_TRUE(cycle.Near({13, 10}));
+  EXPECT_FALSE(cycle.Near({20, 10}));
+  // An item came or went: on after the current one in the new order.
+  EXPECT_EQ(cycle.Click({10, 10}, {7, 6, 8, 9}), 6U);
+  EXPECT_EQ(cycle.Click({10, 10}, {6, 9}), 9U);
+  EXPECT_EQ(cycle.Click({10, 10}, {6, 9}), 6U);
+  // Elsewhere, or over items without the current one, starts over.
+  EXPECT_EQ(cycle.Click({40, 10}, {7, 8, 9}), 7U);
+  EXPECT_EQ(cycle.Click({40, 10}, {8, 9}), 8U);
+  EXPECT_EQ(cycle.Click({40, 10}, {8, 9}), 9U);
+  cycle.Reset();
+  EXPECT_EQ(cycle.Click({40, 10}, {7, 8}), 7U);
+  // One item: no hint; nothing: no selection.
+  EXPECT_EQ(cycle.Click({60, 10}, {5}), 5U);
+  EXPECT_EQ(cycle.Hint(), "");
+  EXPECT_FALSE(cycle.Click({60, 10}, {}).has_value());
+  EXPECT_FALSE(cycle.current().has_value());
+  EXPECT_EQ(StackHint(3), "1/3");
+  EXPECT_EQ(StackHint(1), "");
+}
+
 class CanvasImageTest : public testing::GpuTest {};
 
 // A small map: discs joined by lines, labels, a selection ring.

@@ -5,7 +5,9 @@
 #include <functional>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "gloomy/core/color.h"
 #include "gloomy/core/geometry.h"
@@ -144,6 +146,52 @@ struct PickItem {
 /// layer, then the nearest.
 auto PickNearest(const CanvasView &view, std::span<const PickItem> items,
                  Vec2 screen) -> std::optional<std::uint64_t>;
+
+/// Every item under `screen`, best first: higher layers first, then the
+/// nearest; ties keep the items' order. The first is PickNearest()'s.
+auto PickAll(const CanvasView &view, std::span<const PickItem> items,
+             Vec2 screen) -> std::vector<std::uint64_t>;
+
+/// Click cycling through items stacked under the pointer: the first click
+/// takes the best item, each further click at about the same spot the next
+/// one, wrapping around. Over the same items the first click's order is
+/// kept; if items came or went, the cycle goes on after the current item
+/// in the new order. The app keeps one per canvas.
+class PickCycle {
+ public:
+  /// How far (pixels) a click may be from the previous one and continue
+  /// the cycle.
+  static constexpr float kSlop = 4.0F;
+
+  /// A click at `screen` over `hits` (in PickAll() order). Returns the item
+  /// to select, nullopt if there is none.
+  auto Click(Vec2 screen, std::vector<std::uint64_t> hits)
+      -> std::optional<std::uint64_t>;
+
+  /// Forgets the cycle: the next click starts over (e.g. the selection
+  /// was changed elsewhere).
+  void Reset();
+
+  /// The item the last click selected.
+  [[nodiscard]] auto current() const -> std::optional<std::uint64_t>;
+
+  /// Whether `screen` is at the spot of the last click.
+  [[nodiscard]] auto Near(Vec2 screen) const -> bool;
+
+  /// Position of the current item in the cycle and the items there, as
+  /// "2/3"; empty unless several items are stacked.
+  [[nodiscard]] auto Hint() const -> std::string;
+
+ private:
+  Vec2 at_;
+  /// The stacked items in the order of the first click.
+  std::vector<std::uint64_t> keys_;
+  std::size_t index_ = 0;
+};
+
+/// "1/n" for `hits` under the pointer before a click; empty for one or
+/// none.
+auto StackHint(std::size_t hits) -> std::string;
 
 }  // namespace gloomy::ui
 
