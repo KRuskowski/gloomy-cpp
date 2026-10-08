@@ -730,6 +730,7 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
     } else if (hit.kind == Hit::Kind::kCell) {
       if (const auto row = LineRow(view, state, hit.pos)) {
         result.activated = true;
+        result.double_clicked = true;
         result.row = row;
       }
     }
@@ -1730,6 +1731,10 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
   }
   state.scroll_y =
       std::clamp(state.scroll_y, 0.0, std::max(0.0, content_h - viewport));
+  // A grid that cannot scroll further passes the wheel to its panel.
+  ctx.WheelRange(id,
+                 state.scroll_y > 0.0,
+                 viewport > 0.0 && state.scroll_y < content_h - viewport);
   state.scroll_x = std::clamp(
       state.scroll_x, 0.0F, std::max(0.0F, g.content_w - body.Width()));
 

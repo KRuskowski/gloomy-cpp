@@ -132,6 +132,9 @@ struct GridState {
 struct GridResult {
   /// Enter or double click on a row; `row` is the source row.
   bool activated = false;
+  /// The activation was a double click (not Enter): apps may treat it as
+  /// "show me" rather than "act on it".
+  bool double_clicked = false;
   std::optional<data::RowIndex> row;
   bool selection_changed = false;
   /// Sort, filters or search changed through the grid's UI.

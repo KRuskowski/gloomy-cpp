@@ -1005,6 +1005,7 @@ void BeginScroll(Context &ctx, std::string_view label, LayoutSpec layout) {
                                          ctx.LastInnerSize(content_id).y);
   st.offset -= ctx.Wheel(content_id).y * kWheelLinePixels;
   st.offset = std::clamp(st.offset, 0.0, max_offset);
+  ctx.WheelRange(content_id, st.offset > 0.0, st.offset < max_offset);
 
   NodeDesc outer;
   outer.id = id;
@@ -1118,6 +1119,9 @@ auto List(Context &ctx, std::string_view label, ListState &state, int count,
   }
   state.scroll =
       std::clamp(state.scroll, 0.0, std::max(0.0, content - viewport));
+  ctx.WheelRange(id,
+                 state.scroll > 0.0,
+                 viewport > 0.0 && state.scroll < content - viewport);
 
   layout.mode = LayoutMode::kRow;
   if (layout.height.kind == SizeKind::kFit) {

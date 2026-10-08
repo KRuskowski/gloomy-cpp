@@ -220,6 +220,16 @@ class Context {
   /// Wheel movement (lines) over the innermost wheel node `id` this frame.
   auto Wheel(Id id) const -> Vec2;
 
+  /// Declares how far the wheel node `id` can scroll this frame: a wheel
+  /// turn it cannot take (up at the top, down at the bottom, or nothing to
+  /// scroll) goes on the next frame to the wheel node around it, so a
+  /// short grid or list inside a scrolled panel does not stop the panel
+  /// scrolling. Wheel nodes that declare nothing take every turn (canvas
+  /// and chart zoom).
+  /// @param[in] can_up Content above the view (wheel away scrolls).
+  /// @param[in] can_down Content below the view (wheel towards scrolls).
+  void WheelRange(Id id, bool can_up, bool can_down);
+
   auto time() const -> double { return time_; }
 
   /// Size of the current frame's viewport.
@@ -385,6 +395,9 @@ class Context {
 
   auto HitTest(Vec2 p, std::uint16_t flags) const -> Id;
 
+  /// The innermost wheel node at `p` that can take `wheel` (WheelRange()).
+  auto WheelTarget(Vec2 p, Vec2 wheel) const -> Id;
+
   void MoveFocus(bool backwards);
 
   void LayoutLayer(const Layer &layer);
@@ -442,6 +455,10 @@ class Context {
   Id last_click_id_ = kNoId;
   double last_click_time_ = -1.0;
   std::unordered_map<Id, Vec2> wheel_;
+  /// WheelRange() declarations of this and the previous frame: bit 0 can
+  /// scroll up, bit 1 down.
+  std::unordered_map<Id, std::uint8_t> wheel_ranges_;
+  std::unordered_map<Id, std::uint8_t> prev_wheel_ranges_;
   std::vector<KeyPress> keys_;
   /// Held keys, indexed by Key.
   std::array<bool, kKeyCount> held_keys_{};
