@@ -7,27 +7,21 @@ namespace gloomy::icon {
 
 namespace {
 
-auto Key(IconId id, int px, int bin_x, int bin_y, int halo) -> std::uint64_t {
+auto Key(IconId id, int px, int halo, int rotation_step) -> std::uint64_t {
   return (static_cast<std::uint64_t>(id) << 32U) |
          (static_cast<std::uint64_t>(px & 0xFFFF) << 16U) |
          (static_cast<std::uint64_t>(halo & 0xFF) << 8U) |
-         (static_cast<std::uint64_t>(bin_y & 0xF) << 4U) |
-         static_cast<std::uint64_t>(bin_x & 0xF);
+         static_cast<std::uint64_t>(rotation_step & 0xFF);
 }
 
-/// Splits a coordinate into a whole pixel and a subpixel bin.
-void Snap(float v, bool subpixel, float &whole, int &bin) {
-  if (!subpixel) {
-    whole = std::round(v);
-    bin = 0;
-    return;
-  }
-  whole = std::floor(v);
-  bin = static_cast<int>(std::lround((v - whole) * kIconSubpixelBins));
-  if (bin == kIconSubpixelBins) {
-    whole += 1.0F;
-    bin = 0;
-  }
+constexpr float kTwoPi = 6.28318530718F;
+
+/// The nearest of kIconRotationSteps directions, in [0, steps).
+auto RotationStep(float radians) -> int {
+  const int step = static_cast<int>(
+      std::lround(radians / kTwoPi * static_cast<float>(kIconRotationSteps)));
+  return ((step % kIconRotationSteps) + kIconRotationSteps) %
+         kIconRotationSteps;
 }
 
 }  // namespace
@@ -47,20 +41,21 @@ void IconCache::Validate() {
   }
 }
 
-auto IconCache::Get(IconId id, int px, int bin_x, int bin_y, int halo)
+auto IconCache::Get(IconId id, int px, int halo, int rotation_step)
     -> const Bitmap & {
   Validate();
-  const std::uint64_t key = Key(id, px, bin_x, bin_y, halo);
+  const std::uint64_t key = Key(id, px, halo, rotation_step);
   auto it = bitmaps_.find(key);
   if (it != bitmaps_.end()) {
     return it->second;
   }
   Bitmap bitmap;
-  IconImage image =
-      icons_.Rasterise(id,
-                       px,
-                       static_cast<float>(bin_x) / kIconSubpixelBins,
-                       static_cast<float>(bin_y) / kIconSubpixelBins);
+  IconImage image = icons_.Rasterise(
+      id,
+      px,
+      0.0F,
+      0.0F,
+      kTwoPi * static_cast<float>(rotation_step) / kIconRotationSteps);
   if (halo > 0) {
     image = Dilate(image, halo);
   }
@@ -114,25 +109,26 @@ void IconCache::Draw(gfx::DrawList &list, IconId id, Vec2 center, float size,
   }
   const int px = std::max(1, static_cast<int>(std::lround(size)));
   const float half = 0.5F * static_cast<float>(px);
-  float x = 0.0F;
-  float y = 0.0F;
-  int bin_x = 0;
-  int bin_y = 0;
-  Snap(center.x - half, options.subpixel, x, bin_x);
-  Snap(center.y - half, options.subpixel, y, bin_y);
-  if (list.Culled(
-          Rect::FromXywh(x - static_cast<float>(options.halo_px),
-                         y - static_cast<float>(options.halo_px),
-                         static_cast<float>(px + 2 * options.halo_px),
-                         static_cast<float>(px + 2 * options.halo_px)))) {
+  float x = center.x - half;
+  float y = center.y - half;
+  if (!options.subpixel) {
+    x = std::round(x);
+    y = std::round(y);
+  }
+  const auto halo_px = static_cast<float>(std::max(0, options.halo_px));
+  if (list.Culled(Rect::FromXywh(x - halo_px,
+                                 y - halo_px,
+                                 static_cast<float>(px) + 2.0F * halo_px,
+                                 static_cast<float>(px) + 2.0F * halo_px))) {
     return;
   }
+  const int step = RotationStep(options.rotation);
   if (options.halo.a > 0.0F && options.halo_px > 0) {
     // Copied: the second Get() may rehash the map.
-    const Bitmap halo = Get(id, px, bin_x, bin_y, options.halo_px);
+    const Bitmap halo = Get(id, px, options.halo_px, step);
     DrawBitmap(list, halo, x, y, options.halo);
   }
-  const Bitmap body = Get(id, px, bin_x, bin_y, 0);
+  const Bitmap body = Get(id, px, 0, step);
   DrawBitmap(list, body, x, y, color);
 }
 

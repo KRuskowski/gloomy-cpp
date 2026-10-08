@@ -12,9 +12,8 @@
 
 namespace gloomy::icon {
 
-/// Subpixel positions per axis an icon is rasterised at when drawn with
-/// IconDrawOptions::subpixel.
-inline constexpr int kIconSubpixelBins = 4;
+/// Directions a rotated icon is rasterised at (a full turn).
+inline constexpr int kIconRotationSteps = 32;
 
 /// How an icon is drawn.
 struct IconDrawOptions {
@@ -23,13 +22,17 @@ struct IconDrawOptions {
   Color halo{0, 0, 0, 0};
   /// Width of the halo in pixels.
   int halo_px = 1;
-  /// Places the icon on quarter pixels (moving objects) instead of whole
-  /// pixels (crisp, but it would step a pixel at a time).
+  /// Places the icon at its exact position (moving objects; sampled
+  /// bilinearly, slightly soft) instead of on whole pixels (crisp, but a
+  /// moving icon would step a pixel at a time).
   bool subpixel = false;
+  /// Clockwise rotation in radians (y points down), e.g. a ship's heading
+  /// for an icon authored pointing up; quantised to kIconRotationSteps.
+  float rotation = 0.0F;
 };
 
-/// Rasterises icons of an IconSet at exact pixel sizes (and subpixel
-/// offsets) into the shared 8-bit atlas, next to the text glyphs, and draws
+/// Rasterises icons of an IconSet at exact pixel sizes (and rotations)
+/// into the shared 8-bit atlas, next to the text glyphs, and draws
 /// them as tinted coverage quads (gfx::DrawList::Glyph). Icons rasterised
 /// once stay until the atlas is cleared (by this cache or the glyph cache
 /// when full), which both notice through Atlas::generation().
@@ -50,10 +53,10 @@ class IconCache {
   ///     icons and glyphs together. Must outlive the cache.
   IconCache(const IconSet &icons, Atlas &atlas);
 
-  /// The bitmap of icon `id` at `px` pixels, shifted by `bin_x`, `bin_y`
-  /// / kIconSubpixelBins of a pixel, grown by `halo` pixels. Rasterises on
-  /// first use.
-  auto Get(IconId id, int px, int bin_x = 0, int bin_y = 0, int halo = 0)
+  /// The bitmap of icon `id` at `px` pixels, turned clockwise by
+  /// `rotation_step` / kIconRotationSteps of a full turn, grown by `halo`
+  /// pixels. Rasterises on first use.
+  auto Get(IconId id, int px, int halo = 0, int rotation_step = 0)
       -> const Bitmap &;
 
   /// Draws icon `id` as a `size` x `size` square centred on `center`,

@@ -66,7 +66,7 @@ TEST_F(IconImageTest, IconsMatchReference) {
     }
     y += size + 8.0F;
   }
-  // Over a crossing line, with and without a halo, and on quarter pixels.
+  // Over a crossing line, with and without a halo, and placed exactly.
   list.Line({8, y + 12}, {500, y + 12}, 2.0F, Color::Rgb(0x6EDCFF));
   IconDrawOptions halo;
   halo.halo = Color::Rgb(0x000000);
@@ -85,6 +85,17 @@ TEST_F(IconImageTest, IconsMatchReference) {
                12.0F,
                colors[0],
                subpixel);
+  }
+  // A ship turning clockwise in eighths of a turn.
+  IconDrawOptions turn;
+  for (int k = 0; k < 8; ++k) {
+    turn.rotation = 0.785398F * static_cast<float>(k);
+    cache.Draw(list,
+               ids[2],
+               {330.0F + 22.0F * static_cast<float>(k), y + 34},
+               16.0F,
+               colors[1],
+               turn);
   }
   const Image image = Render(list, {520, 200});
   testing::ExpectMatchesReference(image, "icons");

@@ -83,8 +83,8 @@ auto IconSet::size() const -> std::size_t {
   return impl_->icons.size();
 }
 
-auto IconSet::Rasterise(IconId id, int px, float dx, float dy) const
-    -> IconImage {
+auto IconSet::Rasterise(IconId id, int px, float dx, float dy,
+                        float angle) const -> IconImage {
   IconImage out;
   if (id >= impl_->icons.size() || px < 1) {
     return out;
@@ -95,6 +95,30 @@ auto IconSet::Rasterise(IconId id, int px, float dx, float dy) const
   // Centre a non-square view box.
   const float tx = dx + 0.5F * (static_cast<float>(px) - image->width * scale);
   const float ty = dy + 0.5F * (static_cast<float>(px) - image->height * scale);
+  // nanosvg rasterises without rotation: turn the points themselves and
+  // put them back afterwards.
+  std::vector<float> saved;
+  if (angle != 0.0F) {
+    const float cx = 0.5F * image->width;
+    const float cy = 0.5F * image->height;
+    const float c = std::cos(angle);
+    const float s = std::sin(angle);
+    for (NSVGshape *shape = image->shapes; shape != nullptr;
+         shape = shape->next) {
+      for (NSVGpath *path = shape->paths; path != nullptr; path = path->next) {
+        for (int i = 0; i < path->npts; ++i) {
+          float &x = path->pts[2 * i];
+          float &y = path->pts[2 * i + 1];
+          saved.push_back(x);
+          saved.push_back(y);
+          const float rx = x - cx;
+          const float ry = y - cy;
+          x = cx + c * rx - s * ry;
+          y = cy + s * rx + c * ry;
+        }
+      }
+    }
+  }
   std::vector<std::uint8_t> rgba(static_cast<std::size_t>(px) * px * 4);
   nsvgRasterize(impl_->rasterizer.get(),
                 image,
@@ -105,6 +129,17 @@ auto IconSet::Rasterise(IconId id, int px, float dx, float dy) const
                 px,
                 px,
                 px * 4);
+  if (!saved.empty()) {
+    std::size_t k = 0;
+    for (NSVGshape *shape = image->shapes; shape != nullptr;
+         shape = shape->next) {
+      for (NSVGpath *path = shape->paths; path != nullptr; path = path->next) {
+        for (int i = 0; i < 2 * path->npts; ++i) {
+          path->pts[i] = saved[k++];
+        }
+      }
+    }
+  }
   out.width = px;
   out.height = px;
   out.pixels.resize(static_cast<std::size_t>(px) * px);

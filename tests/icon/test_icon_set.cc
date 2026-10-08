@@ -143,10 +143,10 @@ TEST(IconCacheTest, CachesPerSizeBinAndHalo) {
   EXPECT_EQ(a.margin, 0);
   EXPECT_EQ(cache.Get(square, 12).region.x, a.region.x);
   EXPECT_EQ(cache.size(), 1U);
-  const IconCache::Bitmap halo = cache.Get(square, 12, 0, 0, 1);
+  const IconCache::Bitmap halo = cache.Get(square, 12, 1);
   EXPECT_EQ(halo.region.w, 14);
   EXPECT_EQ(halo.margin, 1);
-  cache.Get(square, 12, 2, 0);
+  cache.Get(square, 12, 0, 3);
   cache.Get(square, 18);
   EXPECT_EQ(cache.size(), 4U);
   // Someone else (the glyph cache) clears the atlas: start over.
@@ -171,7 +171,7 @@ TEST(IconCacheTest, ClearsTheAtlasWhenFull) {
   EXPECT_GT(atlas.generation(), generation);
 }
 
-TEST(IconCacheTest, DrawsSnappedOrOnQuarterPixels) {
+TEST(IconCacheTest, DrawsSnappedOrExactlyPlaced) {
   IconSet icons;
   const IconId square = icons.Add("square", kSquare);
   Atlas atlas(256, 1);
@@ -191,18 +191,47 @@ TEST(IconCacheTest, DrawsSnappedOrOnQuarterPixels) {
   options.halo = Color::Rgb(0x000000);
   cache.Draw(list, square, {20.3F, 30.6F}, 12.0F, red, options);
   ASSERT_EQ(list.instances().size(), 2U);
-  // Halo first, one pixel larger on each side, then the icon.
-  EXPECT_EQ(list.instances()[0].rect[0], 13.0F);
-  EXPECT_EQ(list.instances()[1].rect[0], 14.0F);
-  EXPECT_EQ(list.instances()[1].rect[1], 24.0F);
+  // Halo first, one pixel larger on each side, then the icon, both where
+  // they are, not on whole pixels.
+  EXPECT_FLOAT_EQ(list.instances()[0].rect[0], 20.3F - 7.0F);
+  EXPECT_FLOAT_EQ(list.instances()[1].rect[0], 20.3F - 6.0F);
+  EXPECT_FLOAT_EQ(list.instances()[1].rect[1], 30.6F - 6.0F);
   EXPECT_EQ(list.instances()[1].color, red.Pack());
-  // The bins differ from the snapped bitmap's: another rasterisation.
-  EXPECT_EQ(cache.size(), 3U);
+  // The same body bitmap, plus the halo.
+  EXPECT_EQ(cache.size(), 2U);
   list.Clear();
   cache.Draw(list, kNoIcon, {0, 0}, 12.0F, red);
   list.PushClip(Rect{0, 0, 10, 10});
   cache.Draw(list, square, {200, 200}, 12.0F, red);
   EXPECT_EQ(CountInstances(list, gfx::PrimitiveKind::kGlyph), 0);
+}
+
+TEST(IconCacheTest, RotatesInSteps) {
+  IconSet icons;
+  // A bar along the top edge.
+  const IconId bar = icons.Add(
+      "bar",
+      R"(<svg width="24" height="24" viewBox="0 0 24 24"><rect x="0" y="0"
+           width="24" height="4" fill="#fff"/></svg>)");
+  const IconImage up = icons.Rasterise(bar, 24);
+  EXPECT_EQ(up.At(12, 1), 255);
+  EXPECT_EQ(up.At(22, 12), 0);
+  // A quarter turn clockwise puts it on the right edge.
+  const IconImage right = icons.Rasterise(bar, 24, 0, 0, 1.5707963F);
+  EXPECT_EQ(right.At(12, 1), 0);
+  EXPECT_GT(right.At(22, 12), 250);
+  // Rotating does not change the icon for later calls.
+  EXPECT_EQ(icons.Rasterise(bar, 24).pixels, up.pixels);
+  Atlas atlas(256, 1);
+  IconCache cache(icons, atlas);
+  gfx::DrawList list;
+  IconDrawOptions options;
+  for (const float angle : {0.0F, 0.05F, 6.25F, 1.5707963F, -4.712389F}) {
+    options.rotation = angle;
+    cache.Draw(list, bar, {12, 12}, 24.0F, Color::Rgb(0xFFFFFF), options);
+  }
+  // 0, ~0 and ~2 pi share a bitmap; a quarter turn either way another.
+  EXPECT_EQ(cache.size(), 2U);
 }
 
 /// A market table whose names carry an icon.

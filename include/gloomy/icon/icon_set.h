@@ -54,12 +54,14 @@ class IconSet {
 
   [[nodiscard]] auto Name(IconId id) const -> const std::string &;
 
-  /// Rasterises icon `id` to a `px` x `px` coverage image, shifted right
-  /// and down by `dx`, `dy` pixels (subpixel placement). A non-square view
-  /// box is fitted and centred.
+  /// Rasterises icon `id` to a `px` x `px` coverage image, turned
+  /// clockwise by `angle` radians about the view box centre (y points
+  /// down), then shifted right and down by `dx`, `dy` pixels. A non-square
+  /// view box is fitted and centred. Not thread safe (one rasteriser).
   /// @return an empty image for kNoIcon or px < 1
   [[nodiscard]] auto Rasterise(IconId id, int px, float dx = 0.0F,
-                               float dy = 0.0F) const -> IconImage;
+                               float dy = 0.0F, float angle = 0.0F) const
+      -> IconImage;
 
   [[nodiscard]] auto size() const -> std::size_t;
 
