@@ -38,6 +38,9 @@ class GlyphCache {
 
   auto atlas() const -> const Atlas & { return atlas_; }
 
+  /// The atlas, for other users that share it (icons).
+  auto atlas() -> Atlas & { return atlas_; }
+
   /// Glyphs currently cached.
   auto size() const -> std::size_t { return glyphs_.size(); }
 
@@ -49,6 +52,9 @@ class GlyphCache {
   Atlas &atlas_;
   std::unordered_map<std::uint64_t, GlyphBitmap> glyphs_;
   std::vector<std::uint8_t> scratch_;
+  /// Atlas::generation() the cached glyphs belong to; another user of the
+  /// atlas (IconCache) may clear it.
+  std::uint64_t generation_ = 0;
 };
 
 }  // namespace gloomy::text

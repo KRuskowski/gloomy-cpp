@@ -972,8 +972,21 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
         // Ancestors shown only for context are dimmed.
         fg = c.text_disabled;
       }
-      const Rect text_box{
+      Rect text_box{
           span.x0 + kCellPad + in, y, span.x1 - kCellPad, y + geo.row_h};
+      data::CellIcon cell_icon;
+      Rect icon_box;
+      const bool has_icon = col.renderer != CellRenderer::kSparkline &&
+                            pc.icons != nullptr &&
+                            s.GetIcon(row, col.column, cell_icon) &&
+                            cell_icon.icon != icon::kNoIcon;
+      if (has_icon) {
+        // Icons sit in front of the text, as tall as the text line.
+        const float side = std::max(10.0F, std::floor(geo.row_h - 6.0F));
+        const float top = std::round(y + 0.5F * (geo.row_h - side));
+        icon_box = {text_box.x0, top, text_box.x0 + side, top + side};
+        text_box.x0 += side + 4.0F;
+      }
       switch (col.renderer) {
         case CellRenderer::kBar: {
           const double v = s.GetDouble(col.column, row);
@@ -1041,6 +1054,12 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
         }
         case CellRenderer::kText:
           break;
+      }
+      if (has_icon) {
+        pc.icons->DrawInRect(list,
+                             cell_icon.icon,
+                             icon_box,
+                             cell_icon.color.a > 0.0F ? cell_icon.color : fg);
       }
       const text::HAlign align =
           IsRightAligned(info) && col.renderer != CellRenderer::kBadge
