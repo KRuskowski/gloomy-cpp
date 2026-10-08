@@ -67,7 +67,8 @@ void ParseShellArgs(int argc, char **argv, ShellOptions &options);
 auto RunApp(const ShellOptions &options) -> int;
 
 /// Parses a key name as used in scripts and keymaps: "Down", "Enter",
-/// "PageUp", "F5", "A", "Period", "Ctrl+K", "Shift+Tab".
+/// "PageUp", "F5", "A", "Period", "Ctrl+K", "Shift+Tab"; "Release+W" is
+/// the key's release (a key pressed by name stays held until then).
 /// @return The key press, or a KeyDown of Key::kNone for an unknown name.
 auto ParseKeyName(std::string_view name) -> ui::InputEvent;
 

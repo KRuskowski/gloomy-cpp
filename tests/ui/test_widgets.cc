@@ -27,6 +27,27 @@ TEST(WidgetsTest, ButtonClickResolvesAgainstPreviousLayout) {
   EXPECT_FALSE(clicked);
 }
 
+TEST(WidgetsTest, KeysStayHeldUntilReleased) {
+  UiHarness h;
+  auto ui = [](Context &) {
+  };
+  h.Frame(ui);
+  EXPECT_FALSE(h.ctx().IsKeyDown(Key::kW));
+  h.Frame(ui, {InputEvent::KeyDown(Key::kW)});
+  EXPECT_TRUE(h.ctx().IsKeyDown(Key::kW));
+  // Held through frames without events, and still a single press.
+  h.Frame(ui);
+  EXPECT_TRUE(h.ctx().IsKeyDown(Key::kW));
+  EXPECT_FALSE(h.ctx().ConsumeKey(Key::kW));
+  InputEvent up = InputEvent::KeyDown(Key::kW);
+  up.type = InputEvent::Type::kKeyUp;
+  h.Frame(ui, {InputEvent::KeyDown(Key::kD), up});
+  EXPECT_FALSE(h.ctx().IsKeyDown(Key::kW));
+  EXPECT_TRUE(h.ctx().IsKeyDown(Key::kD));
+  h.ctx().ReleaseKeys();
+  EXPECT_FALSE(h.ctx().IsKeyDown(Key::kD));
+}
+
 TEST(WidgetsTest, PressThenReleaseElsewhereDoesNotClick) {
   UiHarness h;
   bool clicked = false;

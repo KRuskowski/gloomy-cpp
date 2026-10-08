@@ -192,6 +192,13 @@ void ParseShellArgs(int argc, char **argv, ShellOptions &options) {
 
 auto ParseKeyName(std::string_view name) -> ui::InputEvent {
   using ui::Key;
+  // "Release+W" lets go of a held key (scripted steering).
+  constexpr std::string_view kRelease = "Release+";
+  if (name.starts_with(kRelease)) {
+    ui::InputEvent e = ParseKeyName(name.substr(kRelease.size()));
+    e.type = ui::InputEvent::Type::kKeyUp;
+    return e;
+  }
   std::uint8_t mods = ui::kModNone;
   // Modifier prefixes: "Ctrl+", "Shift+", "Alt+".
   for (;;) {

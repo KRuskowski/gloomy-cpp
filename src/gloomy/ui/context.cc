@@ -211,9 +211,11 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
           MoveFocus((e.mods & kModShift) != 0);
           break;
         }
+        held_keys_[static_cast<std::size_t>(e.key)] = true;
         keys_.push_back({e.key, e.mods, false});
         break;
       case InputEvent::Type::kKeyUp:
+        held_keys_[static_cast<std::size_t>(e.key)] = false;
         break;
       case InputEvent::Type::kText:
         text_input_ += e.text;
@@ -678,6 +680,10 @@ auto Context::ConsumeKey(Key key, std::uint8_t mods, bool ignore_shift)
     }
   }
   return false;
+}
+
+auto Context::IsKeyDown(Key key) const -> bool {
+  return held_keys_[static_cast<std::size_t>(key)];
 }
 
 auto Context::ConsumeKeyAnyMods(Key key, std::uint8_t &mods) -> bool {
