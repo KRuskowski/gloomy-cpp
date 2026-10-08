@@ -105,6 +105,8 @@ struct CanvasResult {
   bool clicked = false;
   bool double_clicked = false;
   bool right_clicked = false;
+  /// The right button went down over the canvas this frame.
+  bool right_pressed = false;
   /// The pointer in world coordinates (valid when hovered or clicked).
   WorldPoint pointer;
   Vec2 pointer_screen;
@@ -188,6 +190,19 @@ class PickCycle {
   std::vector<std::uint64_t> keys_;
   std::size_t index_ = 0;
 };
+
+/// Target brackets around a selected object on a canvas (as space games
+/// mark their target): four corners of a square of half-size `radius`
+/// around `centre`, breathing in and out once a second with `time`
+/// (seconds) so that the selection catches the eye, over a dark halo that
+/// keeps them readable on any background.
+void DrawTargetBrackets(gfx::DrawList &list, Vec2 centre, float radius,
+                        const Color &color, double time);
+
+/// A thin ring marking the object under the pointer: lighter than the
+/// selection's brackets, so that hover and selection never look alike.
+void DrawHoverRing(gfx::DrawList &list, Vec2 centre, float radius,
+                   const Color &color);
 
 /// "1/n" for `hits` under the pointer before a click; empty for one or
 /// none.

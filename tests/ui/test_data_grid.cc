@@ -65,6 +65,28 @@ TEST_F(DataGridTest, DefaultColumnsAndVirtualRows) {
   EXPECT_EQ(view_.rows().size(), 1000U);
 }
 
+TEST_F(DataGridTest, SelectedRowsCarryTheThemesAccentBar) {
+  auto bars = [&] {
+    const std::uint32_t accent = Color::Rgb(0xFF5050).Pack();
+    int n = 0;
+    for (const gfx::DrawList *list : h_.ctx().draw_lists()) {
+      for (const gfx::Instance &i : list->instances()) {
+        n += i.color == accent && i.rect[2] - i.rect[0] == 3.0F ? 1 : 0;
+      }
+    }
+    return n;
+  };
+  Frame();
+  Frame(UiHarness::Click(RowPoint(2)));
+  Frame();
+  EXPECT_EQ(bars(), 0) << "the default theme draws none";
+  Theme theme = h_.ctx().theme();
+  theme.colors.selection_accent = Color::Rgb(0xFF5050);
+  h_.ctx().SetTheme(theme);
+  Frame();
+  EXPECT_EQ(bars(), 1);
+}
+
 TEST_F(DataGridTest, HeaderClickCyclesSort) {
   Frame();
   Frame(UiHarness::Click(HeaderPoint(4)));

@@ -85,7 +85,11 @@ struct Interaction {
   /// Pressed and released over the node this frame.
   bool clicked = false;
   bool double_clicked = false;
+  /// The right button was released over the node this frame.
   bool right_clicked = false;
+  /// The right button was pressed over the node this frame (radial menus
+  /// open here, to be chosen from by dragging and releasing).
+  bool right_pressed = false;
   bool focused = false;
   /// Pointer position relative to the node's top-left corner.
   Vec2 local;
@@ -108,6 +112,10 @@ enum class LayerKind : std::uint8_t {
   /// At the top-left corner of the anchor rectangle; for toasts and
   /// floating panels. Takes input but does not block what is below.
   kFloating,
+  /// Covers the whole screen without dimming it; blocks input to
+  /// everything below like a modal. For radial menus and other overlays
+  /// that draw themselves.
+  kOverlay,
 };
 
 /// What custom painters get.
@@ -207,6 +215,15 @@ class Context {
   auto mouse() const -> Vec2 { return mouse_; }
 
   auto mouse_down() const -> bool { return mouse_down_; }
+
+  /// Whether the right button is held.
+  auto right_down() const -> bool { return right_down_; }
+
+  /// Whether the right button was released this frame.
+  auto right_released() const -> bool { return right_released_; }
+
+  /// Where the right button was last pressed.
+  auto right_press_pos() const -> Vec2 { return right_press_pos_; }
 
   /// Where the pointer was last pressed.
   auto press_pos() const -> Vec2 { return press_pos_; }
@@ -452,6 +469,10 @@ class Context {
   Id clicked_ = kNoId;
   Id double_clicked_ = kNoId;
   Id right_clicked_ = kNoId;
+  Id right_pressed_ = kNoId;
+  bool right_down_ = false;
+  bool right_released_ = false;
+  Vec2 right_press_pos_;
   Id last_click_id_ = kNoId;
   double last_click_time_ = -1.0;
   std::unordered_map<Id, Vec2> wheel_;
