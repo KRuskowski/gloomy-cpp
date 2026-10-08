@@ -37,6 +37,11 @@ void Spacer(Context &ctx, float size = 0.0F);
 /// A thin line across the parent (horizontal in a column).
 void Separator(Context &ctx, bool vertical = false);
 
+/// An icon of Context::icons(), `size` pixels square, tinted with `color`
+/// (alpha 0: the theme's text colour). kNoIcon leaves the space empty.
+void Icon(Context &ctx, icon::IconId icon, float size,
+          Color color = {0, 0, 0, 0});
+
 // Text.
 
 struct LabelOptions {

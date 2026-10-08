@@ -17,6 +17,8 @@
 #include "gloomy/core/geometry.h"
 #include "gloomy/core/id.h"
 #include "gloomy/gfx/draw_list.h"
+#include "gloomy/icon/icon_cache.h"
+#include "gloomy/icon/icon_set.h"
 #include "gloomy/text/text_renderer.h"
 #include "gloomy/ui/input.h"
 #include "gloomy/ui/layout.h"
@@ -113,6 +115,8 @@ struct PaintContext {
   gfx::DrawList &list;
   text::TextSystem &text;
   const Theme &theme;
+  /// The context's icons (Context::icons()); null outside a Context.
+  icon::IconCache *icons = nullptr;
 };
 
 /// Paints part of a node; called once the node's rectangle is known.
@@ -301,6 +305,13 @@ class Context {
 
   auto text() -> text::TextSystem & { return text_; }
 
+  /// The app's icons: register SVG icons here once (IconSet::Add()), draw
+  /// them with Icon() or through PaintContext::icons.
+  auto icons() -> icon::IconSet & { return icons_; }
+
+  /// Rasterised icons in the text atlas.
+  auto icon_cache() -> icon::IconCache & { return icon_cache_; }
+
   auto clipboard() -> Clipboard & { return clipboard_; }
 
   /// The current parent node index.
@@ -388,6 +399,8 @@ class Context {
 
   text::TextSystem &text_;
   Theme theme_;
+  icon::IconSet icons_;
+  icon::IconCache icon_cache_;
   Clipboard clipboard_;
 
   // Frame being built.

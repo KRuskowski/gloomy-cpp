@@ -49,6 +49,12 @@ add_library(GlGfx OBJECT
   src/gloomy/gfx/ui_renderer.cc
 )
 
+add_library(GlIcon OBJECT
+  src/gloomy/icon/icon_cache.cc
+  src/gloomy/icon/icon_set.cc
+)
+target_include_directories(GlIcon SYSTEM PRIVATE ${GL_NANOSVG_INCLUDE_DIR})
+
 add_library(GlText OBJECT
   src/gloomy/text/font_set.cc
   src/gloomy/text/glyph_cache.cc
@@ -81,6 +87,7 @@ set(gl_module_names
   GlCore
   GlData
   GlGfx
+  GlIcon
   GlText
   GlUi
 )

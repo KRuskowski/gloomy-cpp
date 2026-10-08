@@ -58,7 +58,9 @@ class Context::TextMeasurer : public Measurer {
 };
 
 Context::Context(text::TextSystem &text, Theme theme)
-    : text_(text), theme_(std::move(theme)) {
+    : text_(text),
+      theme_(std::move(theme)),
+      icon_cache_(icons_, text.glyphs().atlas()) {
   // In-memory clipboard until the platform installs a real one.
   auto storage = std::make_shared<std::string>();
   clipboard_.get = [storage] {
@@ -420,7 +422,7 @@ void Context::PaintNode(int index, gfx::DrawList &list) {
                        r.y1 - spec.padding.bottom};
     PaintText(texts_[node.text], content, list);
   }
-  PaintContext pc{list, text_, theme_};
+  PaintContext pc{list, text_, theme_, &icon_cache_};
   if (node.painter_before >= 0) {
     painters_[node.painter_before](pc, r);
   }

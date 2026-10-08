@@ -21,12 +21,16 @@ auto Key(FaceId face, std::uint32_t glyph, int size64, int bin)
 }  // namespace
 
 GlyphCache::GlyphCache(const FontSet &fonts, Atlas &atlas)
-    : fonts_(fonts), atlas_(atlas) {}
+    : fonts_(fonts), atlas_(atlas), generation_(atlas.generation()) {}
 
 auto GlyphCache::Get(FaceId face, std::uint32_t glyph, float size, int bin)
     -> const GlyphBitmap & {
   const int size64 = static_cast<int>(std::lround(size * 64.0F));
   const std::uint64_t key = Key(face, glyph, size64, bin);
+  if (atlas_.generation() != generation_) {
+    glyphs_.clear();
+    generation_ = atlas_.generation();
+  }
   auto it = glyphs_.find(key);
   if (it != glyphs_.end()) {
     return it->second;
@@ -63,6 +67,7 @@ auto GlyphCache::Rasterise(FaceId face, std::uint32_t glyph, int size64,
     // stale texels for one frame.
     atlas_.Clear();
     glyphs_.clear();
+    generation_ = atlas_.generation();
     region = atlas_.Allocate(w, h);
     if (!region) {
       return result;

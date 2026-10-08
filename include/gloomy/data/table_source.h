@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "gloomy/core/color.h"
+
 namespace gloomy::data {
 
 /// Index of a row in its source.
@@ -20,6 +22,15 @@ enum class ColumnType : std::uint8_t {
   kBool,
   /// Int64 values indexing ColumnInfo::enum_labels.
   kEnum,
+};
+
+/// An icon in front of a cell's text (DataGrid draws it from its
+/// Context's icons).
+struct CellIcon {
+  /// An icon::IconId; 0xFFFFFFFF (icon::kNoIcon) draws none.
+  std::uint32_t icon = 0xFFFFFFFFU;
+  /// Alpha 0: the cell's text colour.
+  Color color{0, 0, 0, 0};
 };
 
 /// Description of a column.
@@ -103,6 +114,15 @@ class TableSource {
       -> bool {
     (void)col;
     (void)row;
+    (void)out;
+    return false;
+  }
+
+  /// The icon shown in front of a cell (a station's type, a ship's class);
+  /// false if there is none.
+  virtual auto GetIcon(RowIndex row, int col, CellIcon &out) const -> bool {
+    (void)row;
+    (void)col;
     (void)out;
     return false;
   }
