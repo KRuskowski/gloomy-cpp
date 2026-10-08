@@ -23,3 +23,9 @@ option(BUILD_PLATFORM_SDL2
 option(ENABLE_SANITIZERS
   "Build with address and undefined behaviour sanitizers."
   OFF)
+
+###
+# Dependencies
+#
+set(GLOOMY_NANOSVG_DIR ""
+  CACHE PATH "Local nanosvg checkout (with src/nanosvg.h); empty fetches it.")

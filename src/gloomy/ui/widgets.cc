@@ -140,6 +140,25 @@ void Spacer(Context &ctx, float size) {
   ctx.Close();
 }
 
+void Icon(Context &ctx, icon::IconId icon, float size, Color color) {
+  NodeDesc desc;
+  desc.layout.width = SizeSpec::Fixed(size);
+  desc.layout.height = SizeSpec::Fixed(size);
+  const int node = ctx.Open(desc);
+  ctx.Close();
+  if (icon == icon::kNoIcon) {
+    return;
+  }
+  if (color.a <= 0.0F) {
+    color = ctx.theme().colors.text;
+  }
+  ctx.AddPainter(node, [icon, color](PaintContext &pc, const Rect &r) {
+    if (pc.icons != nullptr) {
+      pc.icons->DrawInRect(pc.list, icon, r, color);
+    }
+  });
+}
+
 void Separator(Context &ctx, bool vertical) {
   const Theme &t = ctx.theme();
   NodeDesc desc;
