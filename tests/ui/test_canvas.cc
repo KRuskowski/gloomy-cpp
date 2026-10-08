@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include <cmath>
 #include <vector>
 
@@ -91,6 +93,30 @@ TEST_F(CanvasTest, KeysZoomAndFitWhileFocused) {
   Frame(UiHarness::Key(Key::kHome));
   EXPECT_DOUBLE_EQ(state_.x, 0.0);
   EXPECT_NEAR(state_.zoom, zoom, 1e-9);
+}
+
+TEST(CanvasMarksTest, TargetBracketsBreatheAroundTheCentre) {
+  auto extent = [](double time) {
+    gfx::DrawList list;
+    DrawTargetBrackets(list, {100, 100}, 10, Color::Rgb(0xFF5050), time);
+    // Four corners of two strokes each, over a halo: 16 lines.
+    EXPECT_EQ(list.instances().size(), 16U);
+    float right = 0.0F;
+    for (const gfx::Instance &i : list.instances()) {
+      right = std::max({right, i.rect[0], i.rect[2]});
+    }
+    return right;
+  };
+  EXPECT_FLOAT_EQ(extent(0.0), 110.0F);
+  EXPECT_FLOAT_EQ(extent(0.5), 113.0F);
+  EXPECT_FLOAT_EQ(extent(1.0), extent(0.0));
+}
+
+TEST(CanvasMarksTest, HoverRingIsFainterThanItsColour) {
+  gfx::DrawList list;
+  DrawHoverRing(list, {50, 50}, 12, Color::Rgb(0xFFFFFF));
+  ASSERT_EQ(list.instances().size(), 1U);
+  EXPECT_LT(list.instances()[0].color >> 24U, 0xFFU);
 }
 
 TEST(CanvasPickTest, PrefersHigherLayersThenTheNearest) {

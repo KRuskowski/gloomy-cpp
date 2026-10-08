@@ -947,6 +947,11 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
       list.FillRect(
           row_rect,
           focused ? c.selection : c.selection.WithAlpha(c.selection.a * 0.6F));
+      if (c.selection_accent.a > 0.0F) {
+        list.FillRect(
+            {row_rect.x0, row_rect.y0, row_rect.x0 + 3.0F, row_rect.y1},
+            c.selection_accent);
+      }
     } else if (p % 2 == 1) {
       list.FillRect(row_rect, c.surface_alt);
     }

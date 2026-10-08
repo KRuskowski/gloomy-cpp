@@ -33,6 +33,10 @@ struct Palette {
   Color divider;
   Color shadow;
   Color scrim;
+  /// A bar at the left edge of selected rows in grids and lists, so that
+  /// the selection reads at a glance and matches an app's selection marks
+  /// elsewhere (map brackets); alpha 0 draws none.
+  Color selection_accent{0.0F, 0.0F, 0.0F, 0.0F};
 };
 
 /// Sizes in pixels.

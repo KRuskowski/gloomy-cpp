@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <utility>
 #include <vector>
 
@@ -247,6 +248,30 @@ auto PickCycle::Hint() const -> std::string {
     return {};
   }
   return std::to_string(index_ + 1) + "/" + std::to_string(keys_.size());
+}
+
+void DrawTargetBrackets(gfx::DrawList &list, Vec2 centre, float radius,
+                        const Color &color, double time) {
+  // Breathe by up to 3 px, once a second.
+  const auto breath = static_cast<float>(
+      0.5 * (1.0 - std::cos(2.0 * std::numbers::pi * std::fmod(time, 1.0))));
+  const float r = radius + 3.0F * breath;
+  const float arm = std::max(4.0F, 0.45F * r);
+  const Color halo = Color::Rgba(0x000000B0);
+  for (const auto &[w, c] : {std::pair{4.5F, halo}, std::pair{2.0F, color}}) {
+    for (const float sx : {-1.0F, 1.0F}) {
+      for (const float sy : {-1.0F, 1.0F}) {
+        const Vec2 corner{centre.x + sx * r, centre.y + sy * r};
+        list.Line(corner, {corner.x - sx * arm, corner.y}, w, c);
+        list.Line(corner, {corner.x, corner.y - sy * arm}, w, c);
+      }
+    }
+  }
+}
+
+void DrawHoverRing(gfx::DrawList &list, Vec2 centre, float radius,
+                   const Color &color) {
+  list.StrokeCircle(centre, radius, color.WithAlpha(0.45F * color.a), 1.0F);
 }
 
 auto StackHint(std::size_t hits) -> std::string {
