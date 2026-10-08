@@ -45,6 +45,9 @@ class SdlWindow {
   /// Pixels per window coordinate (HiDPI).
   auto PixelScale() const -> float;
 
+  /// Posts a quit event, as closing the window does.
+  static void PostQuit();
+
   /// Routes the context's clipboard to the system clipboard.
   static void InstallClipboard(ui::Context &ctx);
 

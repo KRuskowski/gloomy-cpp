@@ -141,6 +141,11 @@ class DocumentProvider : public SearchProvider {
   std::function<void(const data::DocMatch &)> on_select_;
   std::vector<data::DocMatch> matches_;
   std::vector<std::string> terms_;
+  /// The document's version the matches are for: an app may replace the
+  /// document's content between SetQuery() and Collect().
+  std::uint64_t matched_version_ = 0;
+
+  void Match();
 };
 
 /// State of a Finder; owned by the app.

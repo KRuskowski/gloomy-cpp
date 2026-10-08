@@ -115,6 +115,30 @@ TEST_F(DataGridTest, DragHeaderReordersColumns) {
   EXPECT_TRUE(state_.query.sort.empty());
 }
 
+// Right of the last column a row is still a row, but no column: hovering
+// there and right-clicking must not index a column (it read before the
+// column vector and crashed the X-conomy client).
+TEST_F(DataGridTest, PointerRightOfTheLastColumn) {
+  Frame();
+  for (GridColumn &c : state_.columns) {
+    c.width = 60;
+  }
+  Frame();
+  const Vec2 p{Body().x1 - 20, RowPoint(2).y};
+  for (int i = 0; i < 40; ++i) {
+    Frame({InputEvent::Move(p.x, p.y)});
+  }
+  EXPECT_EQ(state_.hover_col, -1);
+  Frame({InputEvent::Move(p.x, p.y),
+         InputEvent::Down(p.x, p.y, PointerButton::kRight),
+         InputEvent::Up(p.x, p.y, PointerButton::kRight)});
+  ASSERT_TRUE(result_.context_row.has_value());
+  EXPECT_EQ(result_.context_column, -1);
+  Frame(UiHarness::Click(p));
+  ASSERT_TRUE(state_.cursor.has_value());
+  EXPECT_EQ(*state_.cursor, table_->RowKey(view_.rows()[2]));
+}
+
 TEST_F(DataGridTest, KeyboardSelection) {
   Frame();
   Frame(UiHarness::Key(Key::kTab));

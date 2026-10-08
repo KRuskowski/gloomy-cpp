@@ -102,6 +102,8 @@ auto MakeGeometry(const GridState &state, const Rect &body, const Theme &t)
 struct Hit {
   enum class Kind { kNone, kHeader, kHeaderEdge, kCell };
   Kind kind = Kind::kNone;
+  /// Display column; -1 for a cell hit right of the last column (the row
+  /// still counts) or under the pinned columns.
   int col = -1;
   std::int64_t pos = -1;
 };
@@ -214,7 +216,13 @@ auto LineRow(const data::TableView &view, const GridState &state,
   if (l.group >= 0) {
     return std::nullopt;
   }
-  return view.rows()[l.pos];
+  // Rows of a result computed before the source shrank (a query still
+  // running) may point past its end.
+  const RowIndex row = view.rows()[l.pos];
+  if (row >= view.source().RowCount()) {
+    return std::nullopt;
+  }
+  return row;
 }
 
 // Cursor key of a line: the RowKey, or the group id with kGroupKeyBit.
@@ -746,7 +754,8 @@ auto HandlePointer(Context &ctx, data::TableView &view, GridState &state,
       SetCursor(view, state, hit.pos);
       result.context_row = r;
       result.context_column =
-          state.columns[static_cast<std::size_t>(hit.col)].column;
+          hit.col >= 0 ? state.columns[static_cast<std::size_t>(hit.col)].column
+                       : -1;
     }
   }
   return reveal_cursor;
@@ -1728,7 +1737,7 @@ auto DataGrid(Context &ctx, std::string_view label, data::TableView &view,
   std::optional<data::Explanation> tooltip;
   {
     const Hit hit = it.hovered ? HitAt(g, mouse, state.scroll_y, n) : Hit{};
-    if (hit.kind == Hit::Kind::kCell) {
+    if (hit.kind == Hit::Kind::kCell && hit.col >= 0) {
       if (hit.pos != state.hover_pos || hit.col != state.hover_col) {
         state.hover_pos = hit.pos;
         state.hover_col = hit.col;

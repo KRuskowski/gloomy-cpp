@@ -219,6 +219,12 @@ auto SdlWindow::PollEvents(std::vector<ui::InputEvent> &out) -> bool {
   return running;
 }
 
+void SdlWindow::PostQuit() {
+  SDL_Event event{};
+  event.type = SDL_QUIT;
+  SDL_PushEvent(&event);
+}
+
 void SdlWindow::InstallClipboard(ui::Context &ctx) {
   ctx.clipboard().get = [] {
     char *text = SDL_GetClipboardText();

@@ -117,6 +117,25 @@ TEST_F(FinderTest, DocumentHitsJumpToTheBlock) {
             std::string::npos);
 }
 
+// An app replaces the document under a provider (a contract's clauses
+// rebuilt every tick): hits come from the new one, never from blocks that
+// are gone.
+TEST(DocumentProviderTest, DocumentReplacedAfterTheQuery) {
+  data::Document doc = data::Document::ParseMarkdown(testing::ContractText(10));
+  DocumentProvider provider("Contract", doc, [](const data::DocMatch &) {});
+  provider.SetQuery("station");
+  ASSERT_GT(provider.count(), 0U);
+  doc = data::Document::ParseMarkdown("# Short\n\nNo match here.\n");
+  std::vector<SearchHit> hits;
+  provider.Collect(10, hits);
+  EXPECT_TRUE(hits.empty());
+  doc = data::Document::ParseMarkdown("# Again\n\nA station.\n");
+  hits.clear();
+  provider.Collect(10, hits);
+  ASSERT_EQ(hits.size(), 1U);
+  EXPECT_NE(hits[0].label.find("station"), std::string::npos);
+}
+
 TEST_F(FinderTest, EscapeClearsThenCloses) {
   state_.open = true;
   Frame();
