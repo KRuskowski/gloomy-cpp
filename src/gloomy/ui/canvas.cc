@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <vector>
 
 namespace gloomy::ui {
 
@@ -162,6 +163,93 @@ auto PickNearest(const CanvasView &view, std::span<const PickItem> items,
     }
   }
   return best;
+}
+
+auto PickAll(const CanvasView &view, std::span<const PickItem> items,
+             Vec2 screen) -> std::vector<std::uint64_t> {
+  struct Hit {
+    std::uint64_t key;
+    int layer;
+    float d2;
+  };
+
+  std::vector<Hit> hits;
+  for (const PickItem &item : items) {
+    const Vec2 p = view.ToScreen(item.pos);
+    const float dx = p.x - screen.x;
+    const float dy = p.y - screen.y;
+    const float d2 = dx * dx + dy * dy;
+    if (d2 <= item.radius * item.radius) {
+      hits.push_back({item.key, item.layer, d2});
+    }
+  }
+  std::ranges::stable_sort(hits, [](const Hit &a, const Hit &b) {
+    return a.layer != b.layer ? a.layer > b.layer : a.d2 < b.d2;
+  });
+  std::vector<std::uint64_t> keys;
+  keys.reserve(hits.size());
+  for (const Hit &hit : hits) {
+    keys.push_back(hit.key);
+  }
+  return keys;
+}
+
+auto PickCycle::Click(Vec2 screen, std::vector<std::uint64_t> hits)
+    -> std::optional<std::uint64_t> {
+  if (hits.empty()) {
+    Reset();
+    return std::nullopt;
+  }
+  // The same items in any order (moving objects reorder by distance):
+  // keep the first click's order and take the next.
+  auto sorted = [](std::vector<std::uint64_t> keys) {
+    std::ranges::sort(keys);
+    return keys;
+  };
+  const bool near = Near(screen);
+  const auto current =
+      near ? std::ranges::find(hits, keys_[index_]) : hits.end();
+  if (near && sorted(keys_) == sorted(hits)) {
+    index_ = (index_ + 1) % keys_.size();
+  } else if (current != hits.end()) {
+    // Items came or went at the edge: go on after the current one.
+    index_ = static_cast<std::size_t>(current - hits.begin() + 1) % hits.size();
+    keys_ = std::move(hits);
+  } else {
+    keys_ = std::move(hits);
+    index_ = 0;
+  }
+  at_ = screen;
+  return keys_[index_];
+}
+
+void PickCycle::Reset() {
+  keys_.clear();
+  index_ = 0;
+}
+
+auto PickCycle::current() const -> std::optional<std::uint64_t> {
+  if (keys_.empty()) {
+    return std::nullopt;
+  }
+  return keys_[index_];
+}
+
+auto PickCycle::Near(Vec2 screen) const -> bool {
+  const float dx = screen.x - at_.x;
+  const float dy = screen.y - at_.y;
+  return !keys_.empty() && dx * dx + dy * dy <= kSlop * kSlop;
+}
+
+auto PickCycle::Hint() const -> std::string {
+  if (keys_.size() < 2) {
+    return {};
+  }
+  return std::to_string(index_ + 1) + "/" + std::to_string(keys_.size());
+}
+
+auto StackHint(std::size_t hits) -> std::string {
+  return hits < 2 ? std::string() : "1/" + std::to_string(hits);
 }
 
 }  // namespace gloomy::ui

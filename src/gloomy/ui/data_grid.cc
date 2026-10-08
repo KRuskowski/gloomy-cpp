@@ -255,11 +255,15 @@ auto LineOfKey(const data::TableView &view, const GridState &state,
 }
 
 // Fixes up the cached cursor position after the lines changed.
+// Also after the app moved the cursor (GridState::cursor set from outside),
+// so that keys act on the new row in the same frame.
 void SyncCursor(const data::TableView &view, GridState &state) {
-  if (state.cursor_generation == state.display_version) {
+  if (state.cursor_generation == state.display_version &&
+      state.cursor_synced == state.cursor) {
     return;
   }
   state.cursor_generation = state.display_version;
+  state.cursor_synced = state.cursor;
   state.cursor_pos =
       state.cursor ? LineOfKey(view, state, *state.cursor) : std::int64_t{-1};
   if (state.anchor == state.cursor) {
@@ -562,8 +566,9 @@ auto HandleKeys(Context &ctx, data::TableView &view, GridState &state,
                           !state.selection.Contains(*state.cursor));
     }
   }
-  if (ctx.ConsumeKey(Key::kEnter) && state.cursor_pos >= 0 &&
-      state.cursor_pos < n) {
+  // Without a cursor row Enter is left to the app.
+  if (state.cursor_pos >= 0 && state.cursor_pos < n &&
+      ctx.ConsumeKey(Key::kEnter)) {
     if (on_group) {
       ToggleGroup(view, state, state.cursor_pos);
     } else {

@@ -115,6 +115,8 @@ struct GridState {
   std::int64_t cursor_pos = -1;
   std::int64_t anchor_pos = -1;
   std::uint64_t cursor_generation = ~0ULL;
+  /// The cursor `cursor_pos` was found for.
+  std::optional<std::uint64_t> cursor_synced;
   bool pressing = false;
   int resizing = -1;
   float resize_start = 0.0F;

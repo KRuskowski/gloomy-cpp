@@ -22,6 +22,8 @@ class DataGridTest : public ::testing::Test {
     h_.Frame(
         [&](Context &ctx) {
           result_ = DataGrid(ctx, "##market", view_, state_);
+          // What the grid left for the app.
+          enter_left_ = ctx.ConsumeKey(Key::kEnter);
         },
         std::move(events));
   }
@@ -51,6 +53,7 @@ class DataGridTest : public ::testing::Test {
   data::TableView view_;
   GridState state_;
   GridResult result_;
+  bool enter_left_ = false;
 };
 
 TEST_F(DataGridTest, DefaultColumnsAndVirtualRows) {
@@ -166,6 +169,29 @@ TEST_F(DataGridTest, KeyboardSelection) {
   EXPECT_TRUE(result_.activated);
   EXPECT_FALSE(result_.double_clicked) << "Enter";
   EXPECT_EQ(result_.row, 999U);
+}
+
+// The app moves the cursor (e.g. to a selection made elsewhere) in the
+// frame a key arrives: the key acts on the new row, not the old one.
+TEST_F(DataGridTest, KeysActOnACursorMovedFromOutside) {
+  Frame();
+  Frame(UiHarness::Key(Key::kTab));
+  Frame(UiHarness::Key(Key::kDown));
+  ASSERT_EQ(state_.cursor_pos, 0);
+  state_.cursor = table_->RowKey(view_.rows()[7]);
+  Frame(UiHarness::Key(Key::kEnter));
+  EXPECT_TRUE(result_.activated);
+  EXPECT_FALSE(enter_left_);
+  EXPECT_EQ(result_.row, view_.rows()[7]);
+  state_.cursor = table_->RowKey(view_.rows()[3]);
+  Frame(UiHarness::Key(Key::kDown));
+  EXPECT_EQ(state_.cursor, table_->RowKey(view_.rows()[4]));
+  // No cursor: Enter is left to the app.
+  state_.cursor.reset();
+  Frame(UiHarness::Key(Key::kEnter));
+  EXPECT_FALSE(result_.activated);
+  EXPECT_EQ(state_.cursor_pos, -1);
+  EXPECT_TRUE(enter_left_);
 }
 
 TEST_F(DataGridTest, DoubleClickActivatesAndSaysSo) {
