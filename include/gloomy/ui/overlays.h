@@ -67,6 +67,10 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
 /// title before the inputs.
 struct DialogOptions {
   float width = 420.0F;
+  /// 0: as tall as the content; else this height, so that content sized
+  /// Grow (a list, a scrolled body) fills it. Either way at most the
+  /// screen's height less a margin.
+  float height = 0.0F;
   /// One line under the title: what the form will do, or what is missing.
   std::string_view summary;
   Tone tone = Tone::kNeutral;

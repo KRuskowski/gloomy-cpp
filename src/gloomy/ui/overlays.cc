@@ -300,8 +300,13 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
   const Vec2 screen = ctx.viewport();
   panel.layout.width =
       SizeSpec::Fixed(std::min(opt.width, screen.x - 2 * kDialogMargin));
-  panel.layout.height = SizeSpec::Fit();
-  panel.layout.height.max = std::max(0.0F, screen.y - 2 * kDialogMargin);
+  const float max_height = std::max(0.0F, screen.y - 2 * kDialogMargin);
+  if (opt.height > 0.0F) {
+    panel.layout.height = SizeSpec::Fixed(std::min(opt.height, max_height));
+  } else {
+    panel.layout.height = SizeSpec::Fit();
+    panel.layout.height.max = max_height;
+  }
   panel.layout.padding = Padding::All(16);
   panel.layout.gap = 10;
   panel.layout.align = Align::kStretch;

@@ -22,9 +22,19 @@ constexpr float kStatusEdge = 3.0F;
 constexpr float kCellGap = 10.0F;
 constexpr float kButtonGap = 4.0F;
 
+// The narrowest a column gets, in font sizes, where the row is short of
+// space: its text is cut (with an ellipsis; a label gets no narrower than
+// three font sizes) rather than the row run out of its panel.
+constexpr float kMinColumnEms = 3.0F;
+
 auto ColumnWidth(const Theme &t, const CellColumn &column) -> SizeSpec {
-  return column.width > 0.0F ? SizeSpec::Fixed(column.width * CellScale(t))
-                             : SizeSpec::Grow();
+  const float min = kMinColumnEms * t.metrics.font_size;
+  if (column.width > 0.0F) {
+    return SizeSpec::Preferred(column.width * CellScale(t), min);
+  }
+  SizeSpec grow = SizeSpec::Grow();
+  grow.min = min;
+  return grow;
 }
 
 /// A cell: a box of the column's width (id "##c<index>") holding a label
@@ -38,6 +48,8 @@ auto DrawCell(Context &ctx, std::size_t index, const CellColumn &column,
   box.id = id;
   box.layout.mode = LayoutMode::kRow;
   box.layout.width = ColumnWidth(t, column);
+  // The column decides the width, not the text: header and rows match.
+  box.layout.shrink_x = true;
   box.layout.align = Align::kCenter;
   box.flags = cell.why.empty() ? kNodeNone : kNodeInteractive;
   ctx.Open(box);
@@ -184,6 +196,8 @@ void CellHeader(Context &ctx, std::string_view label,
     box.id = cell;
     box.layout.mode = LayoutMode::kRow;
     box.layout.width = ColumnWidth(t, column);
+    // The column decides the width, not the text: header and rows match.
+    box.layout.shrink_x = true;
     box.layout.justify =
         column.align == CellAlign::kRight ? Justify::kEnd : Justify::kStart;
     box.flags = column.why.empty() ? kNodeNone : kNodeInteractive;

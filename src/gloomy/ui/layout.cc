@@ -16,7 +16,7 @@ void ApplySpec(const SizeSpec &s, float content_min, float content_pref,
                float &min, float &pref) {
   switch (s.kind) {
     case SizeKind::kFixed:
-      min = s.value;
+      min = std::min(s.min, s.value);
       pref = s.value;
       break;
     case SizeKind::kPercent:
@@ -106,12 +106,11 @@ void LayoutTree::DistributeMain(int index, bool horizontal, float available) {
     }
   } else if (total > available) {
     // Shrink: take space from children in proportion to what they can give.
+    // Fixed sizes give only what lies above their min (Preferred()).
     float capacity = 0.0F;
     for (int c = n.first_child; c >= 0; c = nodes_[c].next_sibling) {
       const LayoutNode &child = nodes_[c];
-      if (spec(child).kind != SizeKind::kFixed) {
-        capacity += std::max(0.0F, size(nodes_[c]) - min(child));
-      }
+      capacity += std::max(0.0F, size(nodes_[c]) - min(child));
     }
     if (capacity <= 0.0F) {
       return;
@@ -119,9 +118,7 @@ void LayoutTree::DistributeMain(int index, bool horizontal, float available) {
     const float take = std::min(1.0F, (total - available) / capacity);
     for (int c = n.first_child; c >= 0; c = nodes_[c].next_sibling) {
       LayoutNode &child = nodes_[c];
-      if (spec(child).kind != SizeKind::kFixed) {
-        size(child) -= std::max(0.0F, size(child) - min(child)) * take;
-      }
+      size(child) -= std::max(0.0F, size(child) - min(child)) * take;
     }
   }
 }

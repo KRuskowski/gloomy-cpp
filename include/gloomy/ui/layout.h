@@ -13,7 +13,8 @@ namespace gloomy::ui {
 enum class SizeKind : std::uint8_t {
   /// As large as the content needs, within min and max.
   kFit,
-  /// Exactly `value` pixels.
+  /// `value` pixels; gives up to `value - min` when the parent is short
+  /// of space (min equals value for Fixed(), so those never shrink).
   kFixed,
   /// Content size plus a share of the parent's leftover space, by weight
   /// `value`; shrinks down to the content minimum when space is short.
@@ -37,6 +38,12 @@ struct SizeSpec {
 
   static constexpr auto Fixed(float px) -> SizeSpec {
     return {SizeKind::kFixed, px, px, px};
+  }
+
+  /// `px` pixels, shrinking towards `min` when the parent is short of
+  /// space (table columns that must not push a row out of its panel).
+  static constexpr auto Preferred(float px, float min) -> SizeSpec {
+    return {SizeKind::kFixed, px, min < px ? min : px, px};
   }
 
   static constexpr auto Grow(float weight = 1.0F) -> SizeSpec {

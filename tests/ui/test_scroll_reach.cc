@@ -12,6 +12,7 @@
 #include "gloomy/data/document.h"
 #include "gloomy/ui/chart.h"
 #include "gloomy/ui/document_view.h"
+#include "gloomy/ui/list_rows.h"
 #include "gloomy/ui/overlays.h"
 #include "gloomy/ui/view_preset.h"
 #include "gloomy/ui/widgets.h"
@@ -598,6 +599,84 @@ TEST(FitTest, PresetChipsThatDoNotFitGoIntoAMenu) {
   EXPECT_TRUE(ctx.Overflows().empty()) << ctx.Overflows().front().text;
   EXPECT_FALSE(ctx.LastRect(share).has_value());
   EXPECT_TRUE(ctx.LastRect(more).has_value());
+}
+
+// A dialog given a height keeps it (capped to the screen) and a body
+// sized Grow fills what the title leaves.
+TEST(ScrollReachTest, ADialogWithAHeightIsFilledByItsBody) {
+  UiHarness h({640, 480});
+  bool open = true;
+  float height = 300.0F;
+  auto ui = [&](Context &ctx) {
+    DialogOptions opt;
+    opt.width = 400.0F;
+    opt.height = height;
+    if (BeginDialog(ctx, "##dialog", "Contracts", open, opt)) {
+      LayoutSpec body;
+      body.width = SizeSpec::Grow();
+      body.height = SizeSpec::Grow();
+      BeginScroll(ctx, "##body", body);
+      Label(ctx, "Short");
+      EndScroll(ctx);
+      EndDialog(ctx, open);
+    }
+  };
+  h.Frame(ui);
+  Context &ctx = h.ctx();
+  ctx.PushId(ctx.GetId("##dialog"));
+  const Id panel = ctx.GetId("##panel");
+  ctx.PopId();
+  EXPECT_FLOAT_EQ(ctx.LastRect(panel)->Height(), 300.0F);
+  height = 2000.0F;
+  h.Frame(ui);
+  EXPECT_LE(ctx.LastRect(panel)->y1, 480.0F);
+  EXPECT_TRUE(ctx.Overflows().empty());
+}
+
+// Table rows narrower than their columns shrink the columns (header and
+// rows alike) and keep their buttons inside the panel.
+TEST(FitTest, CellRowsShrinkTheirColumnsToThePanel) {
+  UiHarness h;
+  float width = 600;
+  static const std::vector<CellColumn> kColumns = {
+      {"Ship", 150, CellAlign::kLeft, {}},
+      {"Order", 0, CellAlign::kLeft, {}},
+      {"Doing", 230, CellAlign::kLeft, {}},
+      {"Cargo", 120, CellAlign::kLeft, {}},
+  };
+  static const std::vector<RowAction> kActions = {
+      {"Edit", {}, ButtonKind::kFlat}};
+  auto ui = [&](Context &ctx) {
+    LayoutSpec column;
+    column.width = SizeSpec::Fixed(width);
+    column.align = Align::kStretch;
+    BeginColumn(ctx, column);
+    CellHeader(ctx, "##head", kColumns, kActions);
+    const std::vector<Cell> cells = {
+        {"Courier 1"}, {"Trade"}, {"Flying to Argon Prime"}, {"Ore"}};
+    CellRowOptions opt;
+    opt.actions = kActions;
+    CellRow(ctx, "##row", kColumns, cells, opt);
+    End(ctx);
+  };
+  h.Frame(ui);
+  EXPECT_TRUE(h.ctx().Overflows().empty());
+  width = 420;
+  h.Frame(ui);
+  EXPECT_TRUE(h.ctx().Overflows().empty()) << h.ctx().Overflows().front().text;
+  // The header's columns line up with the row's.
+  Context &ctx = h.ctx();
+  for (int i = 0; i < 4; ++i) {
+    const std::string cell = "##c" + std::to_string(i);
+    ctx.PushId(ctx.GetId("##head"));
+    const Rect head = ctx.LastRect(ctx.GetId(cell)).value();
+    ctx.PopId();
+    ctx.PushId(ctx.GetId("##row"));
+    const Rect row = ctx.LastRect(ctx.GetId(cell)).value();
+    ctx.PopId();
+    EXPECT_NEAR(head.x0, row.x0, 0.5F) << cell;
+    EXPECT_NEAR(head.x1, row.x1, 0.5F) << cell;
+  }
 }
 
 }  // namespace
