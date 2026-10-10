@@ -79,6 +79,7 @@ add_library(GlUi OBJECT
   src/gloomy/ui/dock.cc
   src/gloomy/ui/document_view.cc
   src/gloomy/ui/finder.cc
+  src/gloomy/ui/hud.cc
   src/gloomy/ui/label_placer.cc
   src/gloomy/ui/key_chord.cc
   src/gloomy/ui/layout.cc
