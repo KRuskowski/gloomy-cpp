@@ -1,0 +1,226 @@
+#include <gtest/gtest.h>
+
+#include <string_view>
+#include <vector>
+
+#include "gloomy/gfx/offscreen_target.h"
+#include "gloomy/gfx/ui_renderer.h"
+#include "gloomy/ui/cargo_hold.h"
+#include "gloomy/ui/paper.h"
+#include "gloomy/ui/schematic.h"
+#include "gloomy/ui/widgets.h"
+#include "test_support/gpu_test.h"
+#include "test_support/ui_harness.h"
+
+namespace gloomy::ui {
+namespace {
+
+// Stylised widgets as a game shows them: a contract with its stamp and
+// clauses open, a stack of war bonds, an insurance policy; a ship's
+// cross-section with a damaged room and its hold.
+
+const std::vector<SheetFigure> kFigures = {
+    {"Pays", "+2,400 Cr", Tone::kGood, {}},
+    {"Due", "day 3 08:00", Tone::kWarning, {}},
+    {"Penalty", "1,200 Cr", Tone::kBad, {}},
+};
+const std::vector<Signatory> kParties = {
+    {"Issuer", "Lunon Habitat", Color::Rgb(0x78B4FF), true, "day 2"},
+    {"Contractor", "Karl's Hauling", Color::Rgb(0x3CDC3C), true, "day 2"},
+};
+const std::vector<std::string_view> kClauses = {
+    "Deliver 400 Food to Lunon Habitat by day 3 08:00.",
+    "Paid 42 Cr per unit from escrow on delivery.",
+};
+
+void Documents(Context &ctx) {
+  static const std::vector<SheetFigure> kTerms = {
+      {"Price", "900 Cr", Tone::kNeutral, {}},
+      {"Matures", "day 30", Tone::kNeutral, {}},
+      {"Yield", "+11%", Tone::kGood, {}},
+  };
+  static const std::vector<SheetFigure> kCover = {
+      {"Cover", "120,000 Cr", Tone::kGood, {}},
+      {"Premium", "1,800 Cr", Tone::kNeutral, {}},
+      {"Excess", "5,000 Cr", Tone::kNeutral, {}},
+  };
+  static const std::vector<std::string_view> kExclusions = {
+      "War zones you knew of when you flew in",
+      "Contraband and seized cargo",
+  };
+  LayoutSpec root;
+  root.padding = Padding::All(12);
+  root.gap = 12;
+  root.width = SizeSpec::Grow();
+  root.height = SizeSpec::Grow();
+  BeginRow(ctx, root);
+  LayoutSpec left;
+  left.width = SizeSpec::Grow();
+  left.gap = 12;
+  left.align = Align::kStretch;
+  BeginColumn(ctx, left);
+  ContractSheetSpec sheet;
+  sheet.issuer = {"Lunon Habitat",
+                  "Argon Federation - pays on time",
+                  Color::Rgb(0x78B4FF),
+                  icon::kNoIcon};
+  sheet.kind = "Supply contract";
+  sheet.title = "Deliver 400 Food to Lunon Habitat";
+  sheet.reference = "No. 42 - posted day 2 10:00";
+  sheet.figures = kFigures;
+  sheet.stamp = {"Awarded", Tone::kGood};
+  sheet.parties = kParties;
+  sheet.clauses = kClauses;
+  BeginContractSheet(ctx, "##contract", sheet);
+  Button(ctx, "Deliver 400 Food", ButtonKind::kPrimary);
+  EndContractSheet(ctx, sheet);
+  End(ctx);
+  LayoutSpec right;
+  right.width = SizeSpec::Fixed(340);
+  right.gap = 12;
+  right.align = Align::kStretch;
+  BeginColumn(ctx, right);
+  CertificateSpec bond;
+  bond.issuer = {"Argon Federation",
+                 "at war with the Paranid Empire",
+                 Color::Rgb(0x3C78DC),
+                 icon::kNoIcon};
+  bond.title = "War bond";
+  bond.face = "1,000 Cr";
+  bond.terms = kTerms;
+  bond.risk = "If Argon loses: 500 Cr back";
+  bond.serial = "Series A - No. 0012";
+  bond.held = 3;
+  bond.ornament_seed = 2;
+  Certificate(ctx, "##bond", bond);
+  PolicySpec policy;
+  policy.insurer = {"Teladi Mutual",
+                    "Profit is protection",
+                    Color::Rgb(0x2E9E6A),
+                    icon::kNoIcon};
+  policy.title = "Cargo and hull";
+  policy.number = "Policy 7-0031 - day 2 to day 9";
+  policy.insured = "Courier 'Lunar Wind' and its cargo";
+  policy.figures = kCover;
+  policy.exclusions = kExclusions;
+  policy.stamp = {"In force", Tone::kGood};
+  PolicySheet(ctx, "##policy", policy);
+  End(ctx);
+  End(ctx);
+}
+
+void Ship(Context &ctx) {
+  static const std::vector<SchematicRoom> kRooms = {
+      {.label = "Engines",
+       .kind = RoomKind::kEngine,
+       .cells = 1.2F,
+       .level = 0.8F},
+      {.label = "Hold",
+       .kind = RoomKind::kHold,
+       .cells = 4,
+       .deck = 1,
+       .fill = 0.6F,
+       .color = Color::Rgb(0x60C060)},
+      {.label = "Shields",
+       .kind = RoomKind::kShield,
+       .cells = 1,
+       .level = 0.5F,
+       .damage = 0.6F},
+      {.label = "Weapons",
+       .kind = RoomKind::kWeapon,
+       .cells = 1,
+       .level = 1.0F},
+      {.label = "Crew", .kind = RoomKind::kCrew, .cells = 1.5F, .crew = 4},
+      {.label = "Bridge", .kind = RoomKind::kBridge, .cells = 1, .crew = 1},
+  };
+  static const std::vector<SystemGauge> kGauges = {
+      {"Shields", 6, 3, 2, Tone::kWarning, "180/400", {}, icon::kNoIcon},
+      {"Hull", 6, 5, 0, Tone::kGood, "86%", {}, icon::kNoIcon},
+      {"Weapons", 4, 4, 0, Tone::kGood, "12/rd", {}, icon::kNoIcon},
+      {"Sensors", 4, 2, 0, Tone::kNeutral, "18 km", {}, icon::kNoIcon},
+      {"Engines", 4, 3, 0, Tone::kGood, "290 m/s", {}, icon::kNoIcon},
+  };
+  static const std::vector<CargoLot> kLots = {
+      {"Food",
+       360.0,
+       "360 units",
+       Color::Rgb(0x60C060),
+       icon::kNoIcon,
+       CargoForm::kCrate,
+       {}},
+      {"Water",
+       140.0,
+       "140 units",
+       Color::Rgb(0x4080E0),
+       icon::kNoIcon,
+       CargoForm::kTank,
+       {}},
+  };
+  LayoutSpec root;
+  root.padding = Padding::All(12);
+  root.gap = 12;
+  root.width = SizeSpec::Grow();
+  root.align = Align::kStretch;
+  BeginColumn(ctx, root);
+  SchematicSpec spec;
+  spec.name = "Lunar Wind";
+  spec.subtitle = "Container Freighter";
+  spec.rooms = kRooms;
+  spec.gauges = kGauges;
+  spec.shield = 0.45F;
+  spec.hull = 0.86F;
+  spec.crew = "Crew 5 - 140 Cr/h";
+  spec.decks = 2;
+  spec.height = 150;
+  ShipSchematic(ctx, "##ship", spec);
+  CargoHoldSpec hold;
+  hold.capacity = 1000.0;
+  hold.lots = kLots;
+  hold.bays = 32;
+  hold.title = "Hold";
+  CargoHold(ctx, "##hold", hold);
+  End(ctx);
+}
+
+class StyledImageTest : public testing::GpuTest {
+ protected:
+  auto Render(testing::UiHarness &h, VkExtent2D size) -> Image {
+    gfx::UiRenderer renderer(ctx(), gfx::OffscreenTarget::kFormat, h.atlas());
+    gfx::OffscreenTarget target(ctx(), size);
+    return gfx::RenderToImage(ctx(),
+                              renderer,
+                              target,
+                              h.ctx().draw_lists(),
+                              h.ctx().theme().colors.background);
+  }
+};
+
+TEST_F(StyledImageTest, Documents) {
+  testing::UiHarness h({760, 640});
+  auto ui = [](Context &ctx) {
+    Documents(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  // Open the contract's clauses.
+  Context &c = h.ctx();
+  const Id toggle =
+      HashCombine(HashCombine(c.GetId("##contract"), 0x434CULL), 0x636CULL);
+  h.Frame(ui, testing::UiHarness::Click(h.Center(toggle)));
+  h.Frame(ui, {InputEvent::Move(1, 1)});
+  testing::ExpectMatchesReference(Render(h, {760, 640}), "styled_documents");
+}
+
+TEST_F(StyledImageTest, ShipAndHold) {
+  testing::UiHarness h({640, 420});
+  auto ui = [](Context &ctx) {
+    Ship(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {640, 420}), "styled_ship");
+}
+
+}  // namespace
+}  // namespace gloomy::ui

@@ -338,6 +338,18 @@ Contracts are long, structured texts with references to game objects. The docume
 
 `Theme` is a semantic palette (background, surface, surface_alt, primary, accent, text, text_muted, text_disabled, hover, active, focus, selection, success, warning, error, info, border, divider) plus metrics (base font size, spacing unit, radii, row height, border width). Dark (default), Light and High Contrast are built in. Widget styles are derived from the theme at use, with per-call overrides. An X3-style theme for X-conomy (thin borders, translucent panels, cyan accent) is just another theme. Themes are plain structs; a text format can come later.
 
+### 13.3 Panel skins and stylised widgets
+
+Some things are better recognised than read: a contract, a bond, a ship, a hold. Stylised widgets draw them as the thing they are (answer first), in the chunky-framed, clearly iconed manner of FTL's panels, and keep the numbers and tables one click behind them (the host's tabs and grids).
+
+- `PanelSkin` (`include/gloomy/ui/skin.h`): ink, paper, text and tone colours, frame and bevel widths, corner radius, bolts, glow, scan lines. `FromTheme()` derives one from a theme; `OnPaper()` prints the same skin on light paper (certificates, policies). `ParsePanelSkin()` reads the "key = value" lines a game's HUD skin uses (primary, secondary, own, alert, line, glow, scanlines) plus `panel_*` keys, skipping keys it does not know, so one file can flavour the HUD and the panels of a ship or a race.
+- Painters on a draw list, usable by HUDs outside a Context: `PaintFrame()` (frame, bevel, bolts), `PaintStamp()` (rubber stamp), `PaintSeal()`, `PaintOrnateBorder()` (ornaments picked per issuer by `OrnamentOf()`), `PaintHatch()`, `PaintSegments()` (FTL power bars), `StrokeEllipse()`.
+- Documents (`include/gloomy/ui/paper.h`): `BeginContractSheet()`/`EndContractSheet()` (letterhead in the house colour, kind and title, stamp, big figures, the host's content, signatures, clauses folded), `Certificate()` (ornate border, face value, terms, risk line, seal, a stack for holdings), `PolicySheet()` (insured asset, cover figures, exclusions hatched as not covered).
+- `ShipSchematic()` (`include/gloomy/ui/schematic.h`): a cross-section from a list of rooms (kind, relative size, deck, level, damage, contents, crew), laid out by the pure `LayoutSchematic()` (bridge in the bow, decks filled by size), a shield bubble, and segmented gauges for the systems.
+- `CargoHold()` (`include/gloomy/ui/cargo_hold.h`): bays filled in order by volume (`FillHold()`, pure), crates and tanks in each lot's colour and icon, empty bays visible, a legend with shares and free space, the host's detail on hover.
+
+Tests: `tests/ui/test_skin.cc`, `test_paper.cc`, `test_schematic.cc`, `test_cargo_hold.cc`; images `styled_documents`, `styled_ship` (`tests/ui/test_styled_image.cc`).
+
 ## 14. Keeping large data at 60 fps
 
 The frame budget is 16.6 ms; the rules that keep the UI inside it:
