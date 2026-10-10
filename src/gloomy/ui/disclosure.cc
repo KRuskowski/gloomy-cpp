@@ -47,6 +47,7 @@ auto BeginCard(Context &ctx, std::string_view label, const CardOptions &opt)
   card.layout.gap = opt.gap;
   card.layout.align = Align::kStretch;
   card.style.fill = t.colors.surface_raised;
+  card.style.material = t.MaterialOf(Surface::kCard);
   card.style.border = t.colors.border;
   card.style.border_width = t.metrics.border_width;
   card.style.radii = gfx::CornerRadii::All(t.metrics.radius + 2);
