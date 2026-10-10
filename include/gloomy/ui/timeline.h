@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -30,8 +31,9 @@ struct TimelineEvent {
   double time = 0.0;
   std::string label;
   TimelineMark mark = TimelineMark::kDone;
-  /// Alpha 0: the theme's colour for the mark.
-  Color color{0, 0, 0, 0};
+  /// None (or alpha 0): the theme's colour for the mark. Optional so that
+  /// `{}` in a positional initialiser means none, not opaque black.
+  std::optional<Color> color;
   /// Shown in the tooltip under the label and time.
   std::string detail;
 };

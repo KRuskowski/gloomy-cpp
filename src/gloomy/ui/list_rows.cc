@@ -47,10 +47,8 @@ auto DrawCell(Context &ctx, std::size_t index, const CellColumn &column,
       column.align == CellAlign::kRight ? TextAlign::kRight : TextAlign::kLeft;
   o.bold = cell.bold;
   o.muted = cell.muted;
-  if (cell.color.a > 0.0F) {
-    o.color = cell.color;
-  } else if (cell.tone != Tone::kNeutral) {
-    o.color = ToneColor(t, cell.tone);
+  if (const std::optional<Color> color = CellTextColor(t, cell)) {
+    o.color = *color;
   }
   Label(ctx, cell.text, o);
   ctx.Close();
@@ -135,6 +133,17 @@ auto DrawActions(Context &ctx, std::span<const RowAction> actions,
 }
 
 }  // namespace
+
+auto CellTextColor(const Theme &theme, const Cell &cell)
+    -> std::optional<Color> {
+  if (cell.color) {
+    return cell.color;
+  }
+  if (cell.tone != Tone::kNeutral) {
+    return ToneColor(theme, cell.tone);
+  }
+  return std::nullopt;
+}
 
 auto CellScale(const Theme &theme) -> float {
   return theme.metrics.font_size / kBaseFontSize;

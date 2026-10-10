@@ -15,6 +15,13 @@
 namespace gloomy::ui {
 namespace {
 
+TEST(TimelineTest, AnEmptyColourInitialiserMeansNone) {
+  // `{}` must not be Color{}, which is opaque black: the mark keeps the
+  // theme's colour.
+  const TimelineEvent e{0.0, "Posted", TimelineMark::kDone, {}, "At home"};
+  EXPECT_FALSE(e.color.has_value());
+}
+
 TEST(TimelineLayoutTest, PlacesMarkersByTime) {
   const std::vector<double> times = {0.0, 5.0, 10.0};
   const std::vector<float> widths = {10.0F, 10.0F, 10.0F};

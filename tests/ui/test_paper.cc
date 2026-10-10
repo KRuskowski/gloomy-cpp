@@ -51,6 +51,54 @@ auto SheetChild(Context &ctx, std::string_view sheet, std::string_view child)
   return id;
 }
 
+/// An id under a signature of the sheet (parties count from 1).
+auto SignatureChild(Context &ctx, int party, std::string_view child) -> Id {
+  ctx.PushId(ctx.GetId("##sheet"));
+  ctx.PushId(static_cast<std::uint64_t>(party));
+  const Id id = ctx.GetId(child);
+  ctx.PopId();
+  ctx.PopId();
+  return id;
+}
+
+TEST(PaperTest, AnEmptyColourInitialiserMeansNone) {
+  // `{}` must not be Color{}, which is opaque black.
+  EXPECT_FALSE(kParties[1].color.has_value());
+  const Letterhead head{"Teladi Mutual", "Underwriters", {}};
+  EXPECT_FALSE(head.color.has_value());
+}
+
+TEST(PaperTest, SignaturesAndTheSealStandClearOfTheRule) {
+  for (const float width : {700.0F, 420.0F}) {
+    UiHarness h({width, 600});
+    const ContractSheetSpec spec = Spec();
+    auto ui = [&](Context &ctx) {
+      BeginColumn(ctx, {.width = SizeSpec::Grow()});
+      BeginContractSheet(ctx, "##sheet", spec);
+      (void)EndContractSheet(ctx, spec);
+      End(ctx);
+    };
+    h.Frame(ui);
+    h.Frame(ui);
+    Context &c = h.ctx();
+    for (int party = 1; party <= 2; ++party) {
+      const Rect line =
+          c.LastRect(SignatureChild(c, party, "##sig_line")).value();
+      const Rect rule =
+          c.LastRect(SignatureChild(c, party, "##sig_rule")).value();
+      EXPECT_GE(rule.y0 - line.y1, kSignatureRuleGap - 0.5F)
+          << "width " << width << " party " << party;
+      EXPECT_NEAR(line.Height(), kSignatureLineHeight, 0.5F);
+      // The seal (drawn for the signed issuer) fits in the name line, above
+      // the rule and inside the column.
+      const Vec2 seal = SignatureSealCentre(rule);
+      EXPECT_LT(seal.y + kSignatureSealRadius, rule.y0);
+      EXPECT_GE(seal.y - kSignatureSealRadius, line.y0);
+      EXPECT_LE(seal.x + kSignatureSealRadius, rule.x1);
+    }
+  }
+}
+
 TEST(PaperTest, ContractSheetHoldsTheHostsContentAndFoldsClauses) {
   UiHarness h({700, 600});
   const ContractSheetSpec spec = Spec();

@@ -2,6 +2,7 @@
 #define GLOOMY_UI_PAPER_H_
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -24,9 +25,9 @@ namespace gloomy::ui {
 struct Letterhead {
   std::string_view name;
   std::string_view line;
-  /// The house colour: the letterhead strip and the seal; alpha 0 uses
-  /// the skin's ink.
-  Color color{0, 0, 0, 0};
+  /// The house colour: the letterhead strip and the seal; none (or
+  /// alpha 0) uses the skin's ink. Optional so that `{}` means none.
+  std::optional<Color> color;
   icon::IconId icon = icon::kNoIcon;
 };
 
@@ -39,14 +40,31 @@ struct SheetFigure {
 };
 
 /// A party's signature line: role ("Issuer", "Contractor"), name, its
-/// colour (alpha 0: the skin's text), whether it has signed and when.
+/// colour, whether it has signed and when.
 struct Signatory {
   std::string_view role;
   std::string_view name;
-  Color color{0, 0, 0, 0};
+  /// None (or alpha 0): the skin's text. Optional so that `{}` means none.
+  std::optional<Color> color;
   bool signed_ = false;
   std::string_view date;
 };
+
+/// Radius of the seal by a signed party's name.
+inline constexpr float kSignatureSealRadius = 9.0F;
+
+/// Height of a signature's name line: it holds the name or "awaiting
+/// signature" and the seal, so neither touches the rule under it.
+inline constexpr float kSignatureLineHeight = 2.0F * kSignatureSealRadius + 4;
+
+/// Space between a signature's name line and its rule.
+inline constexpr float kSignatureRuleGap = 4.0F;
+
+/// Where the seal of a signed party sits: at the right end of its rule,
+/// wholly above it.
+/// @param[in] rule the signature rule's rectangle
+/// @return the seal's centre
+[[nodiscard]] auto SignatureSealCentre(const Rect &rule) -> Vec2;
 
 /// A rubber stamp for a document's state ("OPEN", "AWARDED", "FULFILLED",
 /// "BREACHED"); empty text draws none.

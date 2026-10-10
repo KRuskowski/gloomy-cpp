@@ -72,6 +72,22 @@ auto CellId(Context &ctx, const std::string &row, int column) -> Id {
   return id;
 }
 
+TEST(ListRowsTest, AnEmptyColourInitialiserMeansNone) {
+  // Positional initialisers pass {} for the colour; that must not be
+  // Color{}, which is opaque black and hid the text on dark panels.
+  const Theme theme;
+  const Cell plain{"360", Tone::kNeutral, {}, false, false, {}};
+  EXPECT_FALSE(plain.color.has_value());
+  EXPECT_FALSE(CellTextColor(theme, plain).has_value());
+  const Cell bad{"-120", Tone::kBad, {}, false, false, {}};
+  ASSERT_TRUE(CellTextColor(theme, bad).has_value());
+  EXPECT_EQ(CellTextColor(theme, bad)->r, ToneColor(theme, Tone::kBad).r);
+  EXPECT_EQ(CellTextColor(theme, bad)->a, ToneColor(theme, Tone::kBad).a);
+  Cell explicit_colour = bad;
+  explicit_colour.color = Color{0.2F, 0.4F, 0.6F, 1.0F};
+  EXPECT_EQ(CellTextColor(theme, explicit_colour)->g, 0.4F);
+}
+
 TEST(ListRowsTest, ColumnsLineUpWithTheHeader) {
   UiHarness h({900, 400});
   List list;

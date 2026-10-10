@@ -54,7 +54,7 @@ auto Caps(std::string_view s) -> std::string {
 }
 
 auto HouseColor(const Letterhead &head, const PanelSkin &skin) -> Color {
-  return head.color.a > 0.0F ? head.color : skin.ink;
+  return head.color && head.color->a > 0.0F ? *head.color : skin.ink;
 }
 
 /// The issuer's strip across the top: icon, name, line, in the house
@@ -210,7 +210,9 @@ auto Figures(Context &ctx, std::span<const SheetFigure> figures,
 }
 
 /// Signature lines: the name over a rule (in the party's colour once
-/// signed), the role and date under it.
+/// signed, its seal at the rule's right end), the role and date under it.
+/// The name line has a fixed height that holds the seal, so the name,
+/// "awaiting signature" and the seal all stand clear of the rule.
 void Signatures(Context &ctx, std::span<const Signatory> parties,
                 const PanelSkin &skin) {
   if (parties.empty()) {
@@ -222,12 +224,25 @@ void Signatures(Context &ctx, std::span<const Signatory> parties,
   row.gap = 18;
   row.padding = {0, 4, 0, 0};
   BeginRow(ctx, row);
-  for (const Signatory &p : parties) {
+  for (std::size_t i = 0; i < parties.size(); ++i) {
+    const Signatory &p = parties[i];
+    ctx.PushId(static_cast<std::uint64_t>(i) + 1);
     LayoutSpec col;
     col.width = SizeSpec::Grow();
     col.gap = 2;
-    const int node = BeginColumn(ctx, col);
-    const Color ink = p.color.a > 0.0F ? p.color : skin.text;
+    BeginColumn(ctx, col);
+    const Color ink = p.color && p.color->a > 0.0F ? *p.color : skin.text;
+    NodeDesc line;
+    line.id = ctx.GetId("##sig_line");
+    line.layout.mode = LayoutMode::kRow;
+    line.layout.width = SizeSpec::Grow();
+    line.layout.height = SizeSpec::Fixed(kSignatureLineHeight);
+    line.layout.align = Align::kEnd;
+    // Long names stop short of the seal.
+    line.layout.padding = {
+        0, 0, p.signed_ ? 2.0F * kSignatureSealRadius + 8 : 0.0F, 0};
+    line.flags = kNodeClip;
+    ctx.Open(line);
     if (p.signed_) {
       Txt(ctx, p.name, t.fonts.italic, t.metrics.font_size + 2, ink);
     } else {
@@ -237,12 +252,25 @@ void Signatures(Context &ctx, std::span<const Signatory> parties,
           t.metrics.font_size,
           skin.text_muted);
     }
+    ctx.Close();
+    NodeDesc gap;
+    gap.layout.height = SizeSpec::Fixed(kSignatureRuleGap - col.gap);
+    ctx.Open(gap);
+    ctx.Close();
     NodeDesc rule;
+    rule.id = ctx.GetId("##sig_rule");
     rule.layout.width = SizeSpec::Grow();
     rule.layout.height = SizeSpec::Fixed(1);
     rule.style.fill = skin.ink_muted.WithAlpha(0.7F);
-    ctx.Open(rule);
+    const int rule_node = ctx.Open(rule);
     ctx.Close();
+    if (p.signed_) {
+      const Color seal = ink.WithAlpha(0.55F);
+      ctx.AddPainter(rule_node, [seal](PaintContext &pc, const Rect &r) {
+        PaintSeal(
+            pc.list, SignatureSealCentre(r), kSignatureSealRadius, seal, 16);
+      });
+    }
     std::string under = Caps(p.role);
     if (!p.signed_ && !p.name.empty()) {
       under += "  " + std::string(p.name);
@@ -256,12 +284,7 @@ void Signatures(Context &ctx, std::span<const Signatory> parties,
         t.metrics.small_font_size - 1,
         skin.text_muted);
     End(ctx);
-    if (p.signed_) {
-      const Color seal = ink.WithAlpha(0.55F);
-      ctx.AddPainter(node, [seal](PaintContext &pc, const Rect &r) {
-        PaintSeal(pc.list, {r.x1 - 12, r.y0 + 10}, 9.0F, seal, 16);
-      });
-    }
+    ctx.PopId();
   }
   End(ctx);
 }
@@ -373,6 +396,11 @@ auto OpenSheets() -> std::vector<SheetFrame> & {
 }
 
 }  // namespace
+
+auto SignatureSealCentre(const Rect &rule) -> Vec2 {
+  return {rule.x1 - kSignatureSealRadius - 3,
+          rule.y0 - kSignatureSealRadius - 2};
+}
 
 auto BeginContractSheet(Context &ctx, std::string_view label,
                         const ContractSheetSpec &spec) -> int {

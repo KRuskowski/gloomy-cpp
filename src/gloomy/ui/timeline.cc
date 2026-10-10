@@ -21,8 +21,8 @@ constexpr float kHoverPx = 8.0F;
 constexpr float kDash = 6.0F;
 
 auto MarkColor(const Theme &t, const TimelineEvent &e) -> Color {
-  if (e.color.a > 0.0F) {
-    return e.color;
+  if (e.color && e.color->a > 0.0F) {
+    return *e.color;
   }
   switch (e.mark) {
     case TimelineMark::kDone:

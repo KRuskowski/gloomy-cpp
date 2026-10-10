@@ -2,6 +2,7 @@
 #define GLOOMY_UI_LIST_ROWS_H_
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -40,13 +41,23 @@ struct Cell {
   std::string_view text;
   /// Colours the text (neutral: the theme's text, or muted).
   Tone tone = Tone::kNeutral;
-  /// An explicit colour wins over the tone; alpha 0 for none.
-  Color color{0.0F, 0.0F, 0.0F, 0.0F};
+  /// An explicit colour wins over the tone; none by default. Optional so
+  /// that `{}` in a positional initialiser means none: a Color{} is opaque
+  /// black and drew such cells black on dark panels.
+  std::optional<Color> color;
   bool bold = false;
   bool muted = false;
   /// Tooltip; empty for none. Shown on the whole row when the text is cut.
   std::string_view why;
 };
+
+/// The colour a cell's text is drawn in: its explicit colour, else its
+/// tone's; nullopt for the theme's text (muted if the cell is).
+/// @param[in] theme the theme whose tone colours to use
+/// @param[in] cell the cell
+/// @return the text colour, or nullopt
+[[nodiscard]] auto CellTextColor(const Theme &theme, const Cell &cell)
+    -> std::optional<Color>;
 
 /// A button at the end of a row.
 struct RowAction {
