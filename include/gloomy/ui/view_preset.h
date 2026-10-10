@@ -59,6 +59,24 @@ auto PresetBar(Context &ctx, std::string_view label,
                std::span<const ViewPreset> presets, int &active)
     -> PresetBarResult;
 
+struct PresetSegmentsOptions {
+  /// Rows each preset shows, in the presets' order; empty if unknown.
+  std::span<const int> counts;
+  /// Presets that show no rows go to the menu (unless chosen), so the
+  /// segments are the views worth looking at now.
+  bool hide_empty = true;
+  /// At most this many presets as segments; the rest go to the menu.
+  int max_segments = 8;
+};
+
+/// The presets as a segmented control with their row counts: the chosen
+/// one and those with rows first, the rest, Save and Share in a "Views"
+/// menu at the end. While the view is modified away from every preset
+/// (`active` -1) a "Your view" segment shows selected.
+auto PresetSegments(Context &ctx, std::string_view label,
+                    std::span<const ViewPreset> presets, int &active,
+                    const PresetSegmentsOptions &opt = {}) -> PresetBarResult;
+
 }  // namespace gloomy::ui
 
 #endif  // GLOOMY_UI_VIEW_PRESET_H_

@@ -4,6 +4,8 @@
 
 #include <memory>
 
+#include "gloomy/data/columnar_table.h"
+
 #include "test_support/market_table.h"
 #include "test_support/ui_harness.h"
 
@@ -85,6 +87,42 @@ TEST_F(DataGridTest, SelectedRowsCarryTheThemesAccentBar) {
   h_.ctx().SetTheme(theme);
   Frame();
   EXPECT_EQ(bars(), 1);
+}
+
+TEST(DataGridBadgeTest, EnumColorsTintBadges) {
+  using data::ColumnInfo;
+  using data::ColumnType;
+  ColumnInfo verdict{
+      .name = "verdict", .title = "Verdict", .type = ColumnType::kEnum};
+  verdict.enum_labels = {"worth it", "not worth it"};
+  const Color good = Color::Rgb(0x40C060);
+  verdict.enum_colors = {good, Color{0, 0, 0, 0}};
+  auto table =
+      std::make_shared<data::ColumnarTable>(std::vector<ColumnInfo>{verdict});
+  table->AddRow({std::int64_t{0}});
+  table->AddRow({std::int64_t{1}});
+  data::TableView view(table);
+  GridState state;
+  UiHarness h;
+  auto ui = [&](Context &ctx) {
+    DataGrid(ctx, "##grid", view, state);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  ASSERT_EQ(state.columns[0].renderer, CellRenderer::kBadge);
+  const std::uint32_t tinted = good.WithAlpha(0.28F).Pack();
+  const std::uint32_t rotation =
+      h.ctx().theme().colors.accent.WithAlpha(0.28F).Pack();
+  int tinted_n = 0;
+  int rotation_n = 0;
+  for (const gfx::DrawList *list : h.ctx().draw_lists()) {
+    for (const gfx::Instance &i : list->instances()) {
+      tinted_n += i.color == tinted ? 1 : 0;
+      rotation_n += i.color == rotation ? 1 : 0;
+    }
+  }
+  EXPECT_EQ(tinted_n, 1) << "value 0 in its own colour";
+  EXPECT_GE(rotation_n, 1) << "value 1 has none: the palette's rotation";
 }
 
 TEST_F(DataGridTest, HeaderClickCyclesSort) {
