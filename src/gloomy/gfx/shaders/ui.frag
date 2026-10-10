@@ -11,8 +11,19 @@ layout(location = 5) flat in vec4 v_radii;
 layout(location = 6) flat in vec4 v_clip;
 layout(location = 7) flat in vec2 v_params;
 layout(location = 8) flat in uint v_kind;
+layout(location = 9) flat in vec2 v_glass;
 
 layout(set = 0, binding = 0) uniform sampler2DArray u_atlas;
+// The host scene, blurred (BackdropBlur), for glass; a 1x1 placeholder
+// when there is none.
+layout(set = 1, binding = 0) uniform sampler2D u_backdrop;
+
+// Shared with ui.vert.
+layout(push_constant) uniform Push {
+  vec2 viewport;
+  float has_backdrop;
+  float pad;
+} pc;
 
 layout(location = 0) out vec4 o_color;
 
@@ -20,6 +31,7 @@ const uint kRect = 0u;
 const uint kCircle = 1u;
 const uint kLine = 2u;
 const uint kGlyph = 3u;
+const uint kGlass = 4u;
 
 // Rounded box; radii are top-left, top-right, bottom-right, bottom-left
 // with y pointing down.
@@ -38,6 +50,31 @@ float Coverage(float d, float soft) {
   return clamp(0.5 - d, 0.0, 1.0);
 }
 
+// A hash in [-0.5, 0.5) per pixel, for dithering.
+float Dither(vec2 p) {
+  return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+}
+
+// Frosted glass at signed distance d inside its box: the blurred backdrop,
+// darkened, under the tint, with a light rim strongest along the top.
+vec4 Glass(float d) {
+  if (pc.has_backdrop < 0.5) {
+    return v_color2;
+  }
+  float darken = v_uv.x;
+  float noise = v_uv.y;
+  float rim = v_glass.x;
+  float rim_width = max(v_glass.y, 0.5);
+  vec3 back = texture(u_backdrop, gl_FragCoord.xy / pc.viewport).rgb;
+  vec3 rgb = mix(back * (1.0 - darken), v_color.rgb, v_color.a);
+  float edge = 1.0 - smoothstep(0.0, rim_width, -d);
+  float top = clamp((v_local.y + v_half.y) / max(2.0 * v_half.y, 1.0), 0.0,
+                    1.0);
+  rgb += vec3(rim * edge * mix(1.0, 0.3, top));
+  rgb += vec3(Dither(gl_FragCoord.xy) * noise / 255.0);
+  return vec4(clamp(rgb, 0.0, 1.0), 1.0);
+}
+
 void main() {
   uint kind = v_kind & 0xFFu;
   float stroke = v_params.x;
@@ -53,6 +90,9 @@ void main() {
       d = length(v_local) - v_half.x;
     } else if (kind == kLine) {
       d = RoundedBox(v_local, v_half, vec4(0.0));
+    } else if (kind == kGlass) {
+      d = RoundedBox(v_local, v_half, v_radii);
+      color = Glass(d);
     } else {
       d = RoundedBox(v_local, v_half, v_radii);
       float t = clamp(v_local.y / max(2.0 * v_half.y, 1e-4) + 0.5, 0.0, 1.0);

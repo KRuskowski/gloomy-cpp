@@ -16,6 +16,24 @@ enum class PrimitiveKind : std::uint32_t {
   kCircle = 1,
   kLine = 2,
   kGlyph = 3,
+  /// Frosted glass: the host scene's blurred backdrop under the shape,
+  /// tinted (docs/design.md section 6.5); a flat fill without a backdrop.
+  kGlass = 4,
+};
+
+/// How a glass shape looks over the blurred backdrop.
+struct GlassLook {
+  /// Mixed over the darkened backdrop by its alpha (the glass's opacity).
+  Color tint{0.0F, 0.0F, 0.0F, 0.0F};
+  /// Share of the backdrop's brightness taken away, 0 to 1 (text contrast
+  /// over bright scenes).
+  float darken = 0.0F;
+  /// Dither amplitude in 1/255 steps against banding in the blur.
+  float noise = 1.0F;
+  /// Strength of the light rim along the top edge, 0 for none.
+  float highlight = 0.0F;
+  /// Width of that rim in pixels.
+  float highlight_width = 1.0F;
 };
 
 /// One instanced quad: the only thing the UI shader draws. 96 bytes, laid
@@ -89,6 +107,13 @@ class DrawList {
   /// axis-aligned 1 px lines put the end points on pixel centres (x.5), or
   /// use FillRect.
   void Line(Vec2 a, Vec2 b, float width, const Color &c);
+
+  /// A frosted glass (optionally rounded) rectangle: the blurred backdrop
+  /// under it, darkened and tinted as `look` says, when the renderer has a
+  /// backdrop (UiRenderer::SetBackdrop()); else filled with `fallback`, so
+  /// that glass looks as solid as before without a host scene.
+  void FillGlass(const Rect &r, const GlassLook &look, const Color &fallback,
+                 const CornerRadii &radii = {});
 
   /// A glyph (or any coverage bitmap) from the atlas.
   /// @param[in] r Pixel rectangle covered by the bitmap.

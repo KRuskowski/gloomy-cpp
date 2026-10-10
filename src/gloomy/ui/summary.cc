@@ -147,6 +147,7 @@ auto SummaryCard(Context &ctx, std::string_view label, const SummarySpec &spec)
   card.layout.padding = {14, 10, 12, 10};
   card.layout.gap = 4;
   card.style.fill = detail::InteractiveFill(t, t.colors.surface, it);
+  card.style.material = t.MaterialOf(Surface::kCard);
   card.style.border = t.colors.border;
   card.style.border_width = t.metrics.border_width;
   card.style.radii = gfx::CornerRadii::All(t.metrics.radius + 2);
@@ -260,6 +261,7 @@ auto SummaryPanel(Context &ctx, std::string_view label,
   panel.layout.gap = 8;
   panel.layout.align = Align::kStretch;
   panel.style.fill = t.colors.surface;
+  panel.style.material = t.MaterialOf(Surface::kCard);
   panel.style.border = t.colors.border;
   panel.style.border_width = t.metrics.border_width;
   panel.style.radii = gfx::CornerRadii::All(t.metrics.radius + 2);

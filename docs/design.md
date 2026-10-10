@@ -152,6 +152,16 @@ Glyphs are rasterised as 8-bit coverage bitmaps at the exact pixel size with Fre
 
 `OffscreenTarget` renders the same command stream into an image and copies it to a host buffer for PNG output. All image tests use it on lavapipe; the demo app has `--screenshot` for the same path on any device.
 
+### 6.5 Host scenes and frosted glass
+
+A host engine (X-conomy's 3D view) draws its scene under the UI in gloomy's own render loop through `gfx::SceneRenderer` (`include/gloomy/gfx/scene_renderer.h`), created by `app::ShellOptions::scene` once the device exists. Per frame the shell asks `Active()`; if so it transitions the frame's image to `COLOR_ATTACHMENT_OPTIMAL` (`Swapchain::BeginScene()`, `OffscreenTarget::BeginScene()`), the host records its scene into every pixel of it, and the UI is drawn over it with `LOAD` (`BeginRendering(clear, true)`). Headless screenshots go through `RenderSceneToImage()`. A host that owns its loop does the same with `UiRenderer` directly.
+
+`Record()` also returns the host's scene image as a `gfx::Backdrop` (left in `SHADER_READ_ONLY_OPTIMAL`, writes visible to fragment shaders). `gfx::BackdropBlur` (`src/gloomy/gfx/backdrop_blur.cc`) blurs it once per frame with the dual filter (Kawase): downsample to 1/2, 1/4, ... (`LevelsForRadius()` of `GlassStyle::blur_radius`, at most 6 levels) and upsample back to 1/2, a few passes over small images, cheap at 4K. `UiRenderer::SetBackdrop()` binds the result as set 1 of the UI pipeline (a 1x1 placeholder otherwise).
+
+Glass is one more primitive, `PrimitiveKind::kGlass` (`DrawList::FillGlass()`, `GlassLook`): the fragment shader samples the blurred scene under its own pixels, takes `darken` of its brightness away, mixes the tint over it by the tint's alpha, adds a light rim strongest along the top edge and a little dither against banding. Without a backdrop (the map client, every existing test) it draws its fallback colour, so glass looks exactly as solid as before. Glass over glass shows the scene, not the panel below.
+
+Glass is a material, not a widget: `NodeStyle::material` (`Material::kGlass`) paints the theme's `GlassStyle` instead of the fill, which stays the fallback. `GlassStyle` (in `Theme::glass`) holds the blur radius, tint and opacity, darkening, noise, rim, and which kinds of surface are glass (`Surface`: panels, cards, menus and popups, dialogs, the radial menu); all off by default. Widgets ask `Theme::MaterialOf(Surface)`: `BeginPanel()`, summary cards and panels, popup layers, the finder, `BeginDialog()`, the radial menu. New surface widgets do the same. `Theme::WithGlass()` turns every kind on and makes the nested surface colours translucent, so lists and buttons on glass let it show through. Tests (`tests/gfx/test_glass_image.cc`) render glass over a busy and a bright synthetic scene and require WCAG contrast 4.5 for the theme's text over the glass.
+
 ## 7. Text
 
 - `text::FontSet` loads faces with FreeType from files or memory (Liberation Sans and Liberation Mono are embedded, SIL OFL) and keeps a fallback chain (for example Liberation Sans, then DejaVu Sans, then a CJK face if present).

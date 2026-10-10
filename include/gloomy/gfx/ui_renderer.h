@@ -37,6 +37,12 @@ class UiRenderer {
   void Prepare(VkCommandBuffer cmd, std::uint32_t slot,
                std::span<const DrawList *const> lists);
 
+  /// The blurred host scene glass shows on frame slot `slot`
+  /// (BackdropBlur::Record()'s result, in SHADER_READ_ONLY_OPTIMAL while
+  /// drawn), or VK_NULL_HANDLE for none: glass then draws its solid
+  /// fallback. Call before Draw(), once the slot's previous use completed.
+  void SetBackdrop(std::uint32_t slot, VkImageView view);
+
   /// Records the draw for what the last Prepare() of `slot` uploaded.
   /// Sets viewport and scissor to `extent`.
   void Draw(VkCommandBuffer cmd, std::uint32_t slot, VkExtent2D extent);
@@ -51,6 +57,10 @@ class UiRenderer {
     Buffer instances;
     Buffer staging;
     std::uint32_t count = 0;
+    /// Set 1: the backdrop glass samples.
+    VkDescriptorSet backdrop_set = VK_NULL_HANDLE;
+    VkImageView backdrop = VK_NULL_HANDLE;
+    bool has_backdrop = false;
   };
 
   void CreatePipeline(VkFormat color_format);
@@ -59,12 +69,18 @@ class UiRenderer {
 
   void UploadAtlas(VkCommandBuffer cmd, FrameData &frame);
 
+  void WriteBackdrop(FrameData &frame, VkImageView view);
+
   DeviceContext &ctx_;
   Atlas &atlas_;
   std::vector<FrameData> frames_;
   Image2D atlas_image_;
+  /// What glass samples without a backdrop (never shown: the shader draws
+  /// the fallback colour then), so the set is always valid.
+  Image2D placeholder_;
   VkSampler sampler_ = VK_NULL_HANDLE;
   VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
+  VkDescriptorSetLayout backdrop_layout_ = VK_NULL_HANDLE;
   VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
   VkDescriptorSet descriptor_set_ = VK_NULL_HANDLE;
   VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;

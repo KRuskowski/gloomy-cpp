@@ -37,6 +37,9 @@ struct NodeStyle {
   Color shadow{0, 0, 0, 0};
   float shadow_blur = 0.0F;
   Vec2 shadow_offset;
+  /// kGlass paints the theme's glass (GlassStyle) instead of `fill`,
+  /// which stays the fallback without a host scene.
+  Material material = Material::kSolid;
 };
 
 enum class TextAlign : std::uint8_t { kLeft, kCenter, kRight };

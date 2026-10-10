@@ -52,6 +52,22 @@ void DrawList::FillRectGradient(const Rect &r, const Color &top,
   SetRadii(inst, radii);
 }
 
+void DrawList::FillGlass(const Rect &r, const GlassLook &look,
+                         const Color &fallback, const CornerRadii &radii) {
+  if (r.Empty() || Culled(r)) {
+    return;
+  }
+  Instance &inst = Push(PrimitiveKind::kGlass, r);
+  inst.color = look.tint.Pack();
+  inst.color2 = fallback.Pack();
+  // The look rides in the otherwise unused atlas coordinates.
+  inst.uv[0] = look.darken;
+  inst.uv[1] = look.noise;
+  inst.uv[2] = look.highlight;
+  inst.uv[3] = look.highlight_width;
+  SetRadii(inst, radii);
+}
+
 void DrawList::StrokeRect(const Rect &r, const Color &c, float width,
                           const CornerRadii &radii) {
   if (r.Empty() || Culled(r) || width <= 0.0F) {

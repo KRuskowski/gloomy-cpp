@@ -8,6 +8,12 @@ gl_compile_shader(gl_generated_headers
   ${GL_PROJECT_DIR}/src/gloomy/gfx/shaders/ui.vert kUiVertSpirv)
 gl_compile_shader(gl_generated_headers
   ${GL_PROJECT_DIR}/src/gloomy/gfx/shaders/ui.frag kUiFragSpirv)
+gl_compile_shader(gl_generated_headers
+  ${GL_PROJECT_DIR}/src/gloomy/gfx/shaders/fullscreen.vert kFullscreenVertSpirv)
+gl_compile_shader(gl_generated_headers
+  ${GL_PROJECT_DIR}/src/gloomy/gfx/shaders/blur_down.frag kBlurDownFragSpirv)
+gl_compile_shader(gl_generated_headers
+  ${GL_PROJECT_DIR}/src/gloomy/gfx/shaders/blur_up.frag kBlurUpFragSpirv)
 gl_embed_file(gl_generated_headers
   ${GL_PROJECT_DIR}/assets/fonts/LiberationSans-Regular.ttf
   kLiberationSansRegular)
@@ -42,6 +48,7 @@ add_library(GlData OBJECT
 )
 
 add_library(GlGfx OBJECT
+  src/gloomy/gfx/backdrop_blur.cc
   src/gloomy/gfx/device_context.cc
   src/gloomy/gfx/draw_list.cc
   src/gloomy/gfx/offscreen_target.cc
@@ -73,6 +80,7 @@ add_library(GlUi OBJECT
   src/gloomy/ui/dock.cc
   src/gloomy/ui/document_view.cc
   src/gloomy/ui/finder.cc
+  src/gloomy/ui/hud.cc
   src/gloomy/ui/label_placer.cc
   src/gloomy/ui/key_chord.cc
   src/gloomy/ui/layout.cc

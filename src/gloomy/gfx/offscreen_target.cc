@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "gfx/barriers.h"
+#include "gloomy/gfx/backdrop_blur.h"
 #include "gloomy/gfx/ui_renderer.h"
 
 namespace gloomy::gfx {
@@ -10,12 +11,13 @@ namespace gloomy::gfx {
 OffscreenTarget::OffscreenTarget(DeviceContext &ctx, VkExtent2D extent)
     : image_(ctx.CreateImage(extent, 1, kFormat,
                              VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT)),
+                                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                 VK_IMAGE_USAGE_TRANSFER_DST_BIT)),
       readback_(ctx.CreateBuffer(
           static_cast<VkDeviceSize>(extent.width) * extent.height * 4,
           VK_BUFFER_USAGE_TRANSFER_DST_BIT, true)) {}
 
-void OffscreenTarget::Begin(VkCommandBuffer cmd, const Color &clear) {
+auto OffscreenTarget::BeginScene(VkCommandBuffer cmd) -> ColorTarget {
   ImageBarrier(cmd,
                image_.handle(),
                1,
@@ -25,11 +27,32 @@ void OffscreenTarget::Begin(VkCommandBuffer cmd, const Color &clear) {
                VK_ACCESS_2_TRANSFER_READ_BIT,
                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+  return {image_.handle(), image_.view(), kFormat, image_.extent()};
+}
+
+void OffscreenTarget::Begin(VkCommandBuffer cmd, const Color &clear,
+                            bool load) {
+  if (load) {
+    // The scene's writes before the UI's.
+    ImageBarrier(cmd,
+                 image_.handle(),
+                 1,
+                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                 VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                 VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                 VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+  } else {
+    BeginScene(cmd);
+  }
   VkRenderingAttachmentInfo color{};
   color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   color.imageView = image_.view();
   color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  color.loadOp =
+      load ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
   color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   // Premultiplied, like everything the renderer writes.
   color.clearValue.color = {
@@ -107,6 +130,26 @@ auto RenderToImage(DeviceContext &ctx, UiRenderer &renderer,
   ctx.SubmitAndWait([&](VkCommandBuffer cmd) {
     renderer.Prepare(cmd, 0, lists);
     target.Begin(cmd, clear);
+    renderer.Draw(cmd, 0, target.extent());
+    target.End(cmd);
+  });
+  return target.Read();
+}
+
+auto RenderSceneToImage(DeviceContext &ctx, UiRenderer &renderer,
+                        BackdropBlur &blur, SceneRenderer &scene,
+                        OffscreenTarget &target,
+                        std::span<const DrawList *const> lists, int blur_levels)
+    -> Image {
+  ctx.SubmitAndWait([&](VkCommandBuffer cmd) {
+    const ColorTarget color = target.BeginScene(cmd);
+    const Backdrop backdrop = scene.Record(cmd, 0, color);
+    renderer.SetBackdrop(0,
+                         backdrop.view != VK_NULL_HANDLE
+                             ? blur.Record(cmd, 0, backdrop, blur_levels)
+                             : VK_NULL_HANDLE);
+    renderer.Prepare(cmd, 0, lists);
+    target.Begin(cmd, {}, true);
     renderer.Draw(cmd, 0, target.extent());
     target.End(cmd);
   });

@@ -293,6 +293,7 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
   panel.layout.gap = 10;
   panel.layout.align = Align::kStretch;
   panel.style.fill = t.colors.surface_raised;
+  panel.style.material = t.MaterialOf(Surface::kDialog);
   panel.style.border = t.colors.border;
   panel.style.border_width = t.metrics.border_width;
   panel.style.radii = gfx::CornerRadii::All(t.metrics.radius + 4);

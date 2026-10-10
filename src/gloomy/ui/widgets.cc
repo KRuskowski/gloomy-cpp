@@ -117,6 +117,7 @@ auto BeginPanel(Context &ctx, LayoutSpec layout) -> int {
   NodeDesc desc;
   desc.layout = layout;
   desc.style.fill = t.colors.surface;
+  desc.style.material = t.MaterialOf(Surface::kPanel);
   desc.style.border = t.colors.border;
   desc.style.border_width = t.metrics.border_width;
   desc.style.radii = gfx::CornerRadii::All(t.metrics.radius);

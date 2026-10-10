@@ -61,7 +61,19 @@ void PaintRadial(PaintContext &pc, Vec2 centre,
   const float small = t.metrics.small_font_size;
   const int n = static_cast<int>(items.size());
   const float outer = m.ring_radius + m.item_radius + 8.0F;
-  pc.list.FillCircle(centre, outer, c.surface_raised.WithAlpha(0.94F));
+  if (t.glass.On(Surface::kRadial)) {
+    const Color fallback =
+        t.glass.fallback.a > 0.0F ? t.glass.fallback : c.surface_raised;
+    pc.list.FillGlass({centre.x - outer,
+                       centre.y - outer,
+                       centre.x + outer,
+                       centre.y + outer},
+                      t.glass.Look(),
+                      fallback.WithAlpha(0.94F),
+                      gfx::CornerRadii::All(outer));
+  } else {
+    pc.list.FillCircle(centre, outer, c.surface_raised.WithAlpha(0.94F));
+  }
   pc.list.StrokeCircle(centre, outer, c.border, t.metrics.border_width);
   pc.list.StrokeCircle(
       centre, m.ring_radius - m.item_radius - 6.0F, c.divider, 1.0F);
