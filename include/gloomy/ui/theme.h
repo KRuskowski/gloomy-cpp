@@ -78,6 +78,15 @@ struct Theme {
 
   /// Black, white and one strong accent; thicker focus rings.
   static auto HighContrast(const text::DefaultFonts &fonts) -> Theme;
+
+  /// The same theme with every metric (font sizes, spacing, padding, radii,
+  /// row and control heights) multiplied by `factor`, clamped to
+  /// [kMinScale, kMaxScale]: a UI scale setting. Border and focus widths
+  /// stay at least one pixel.
+  [[nodiscard]] auto Scaled(float factor) const -> Theme;
+
+  static constexpr float kMinScale = 0.5F;
+  static constexpr float kMaxScale = 3.0F;
 };
 
 }  // namespace gloomy::ui
