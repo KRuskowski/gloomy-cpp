@@ -68,6 +68,7 @@ add_library(GlUi OBJECT
   src/gloomy/ui/chart.cc
   src/gloomy/ui/context.cc
   src/gloomy/ui/data_grid.cc
+  src/gloomy/ui/disclosure.cc
   src/gloomy/ui/dock.cc
   src/gloomy/ui/document_view.cc
   src/gloomy/ui/finder.cc

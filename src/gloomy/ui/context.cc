@@ -415,7 +415,10 @@ void Context::LayoutLayer(const Layer &layer) {
         const float h = std::min(root.pref_h, above);
         placed = Rect{a.x0, a.y0 - h, viewport_.x, a.y0};
       }
-      const float w = tree_.node(layer.root).rect.Width();
+      // The popup's own width, not what is left right of the anchor: one
+      // anchored near the right edge moves left instead of squeezing.
+      const float w =
+          std::min(std::max(root.pref_w, root.rect.Width()), viewport_.x);
       if (placed.x0 + w > viewport_.x) {
         placed.x0 = std::max(0.0F, viewport_.x - w);
       }

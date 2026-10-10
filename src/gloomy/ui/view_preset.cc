@@ -4,6 +4,8 @@
 #include <charconv>
 #include <cstdio>
 
+#include "gloomy/ui/disclosure.h"
+#include "gloomy/ui/overlays.h"
 #include "gloomy/ui/widgets.h"
 #include "ui/widget_util.h"
 
@@ -391,6 +393,90 @@ auto PresetBar(Context &ctx, std::string_view label,
   }
   if (Button(ctx, "Share", ButtonKind::kFlat)) {
     result.share = true;
+  }
+  ctx.PopId();
+  End(ctx);
+  return result;
+}
+
+auto PresetSegments(Context &ctx, std::string_view label,
+                    std::span<const ViewPreset> presets, int &active,
+                    const PresetSegmentsOptions &opt) -> PresetBarResult {
+  PresetBarResult result;
+  const int n = static_cast<int>(presets.size());
+  const auto count_of = [&](int i) {
+    return i < static_cast<int>(opt.counts.size())
+               ? opt.counts[static_cast<std::size_t>(i)]
+               : -1;
+  };
+  // Which presets are segments: the chosen one always, then those with
+  // rows (or every one, without counts), in order, up to the limit.
+  std::vector<int> shown;
+  std::vector<int> hidden;
+  int room = std::max(1, opt.max_segments) - (active >= 0 ? 1 : 0);
+  for (int i = 0; i < n; ++i) {
+    const bool chosen = i == active;
+    const bool worth = !opt.hide_empty || count_of(i) != 0;
+    if (chosen || (worth && room > 0)) {
+      shown.push_back(i);
+      room -= chosen ? 0 : 1;
+    } else {
+      hidden.push_back(i);
+    }
+  }
+  std::vector<std::string> names;
+  names.reserve(shown.size() + 1);
+  std::vector<Segment> segments;
+  for (const int i : shown) {
+    const ViewPreset &p = presets[static_cast<std::size_t>(i)];
+    segments.push_back({p.name, count_of(i), p.description});
+  }
+  int selected = -1;
+  for (std::size_t k = 0; k < shown.size(); ++k) {
+    if (shown[k] == active) {
+      selected = static_cast<int>(k);
+    }
+  }
+  if (active < 0) {
+    segments.push_back({"Your view", -1, "Changed from the saved views"});
+    selected = static_cast<int>(segments.size()) - 1;
+  }
+  LayoutSpec row;
+  row.gap = 8;
+  row.align = Align::kCenter;
+  BeginRow(ctx, row);
+  ctx.PushId(label);
+  const int before = selected;
+  if (SegmentedControl(ctx, "##segments", selected, segments) &&
+      selected != before && selected >= 0 &&
+      selected < static_cast<int>(shown.size())) {
+    active = shown[static_cast<std::size_t>(selected)];
+    result.changed = true;
+  }
+  if (BeginMenuButton(ctx, "Views##more", ButtonKind::kFlat)) {
+    if (!hidden.empty()) {
+      MenuHeading(ctx, opt.hide_empty ? "Nothing in them now" : "More views");
+      for (const int i : hidden) {
+        const ViewPreset &p = presets[static_cast<std::size_t>(i)];
+        const int c = count_of(i);
+        const std::string text =
+            c >= 0 ? p.name + " (" + std::to_string(c) + ")" : p.name;
+        if (MenuItem(ctx, MenuItemSpec{text, {}, p.description, true})) {
+          active = i;
+          result.changed = true;
+        }
+      }
+      MenuSeparator(ctx);
+    }
+    if (MenuItem(ctx,
+                 MenuItemSpec{"Save view", {}, "Keep this filter and sort"})) {
+      result.save = true;
+    }
+    if (MenuItem(ctx,
+                 MenuItemSpec{"Share view", {}, "Copy it as text to paste"})) {
+      result.share = true;
+    }
+    EndMenuButton(ctx);
   }
   ctx.PopId();
   End(ctx);

@@ -57,12 +57,10 @@ void OpenContextMenu(Context &ctx, std::string_view label) {
   ctx.OpenPopup(id);
 }
 
-auto BeginContextMenu(Context &ctx, std::string_view label) -> bool {
-  const Id id = ctx.GetId(label);
-  if (!ctx.IsPopupOpen(id)) {
-    return false;
-  }
-  MenuState &st = ctx.State<MenuState>(id);
+namespace {
+
+// Keyboard movement in an open menu, and makes it the one being declared.
+void StartMenu(Context &ctx, Id id, MenuState &st, const Rect &anchor) {
   st.count = std::max(st.count, st.counter);
   st.counter = 0;
   st.activate = -1;
@@ -78,19 +76,46 @@ auto BeginContextMenu(Context &ctx, std::string_view label) -> bool {
     }
   }
   Menu(ctx) = {id, &st};
-  ctx.BeginLayer(
-      LayerKind::kPopup, id, Rect{st.at.x, st.at.y, st.at.x + 1, st.at.y});
+  ctx.BeginLayer(LayerKind::kPopup, id, anchor);
   ctx.PushId(id);
+}
+
+void FinishMenu(Context &ctx) {
+  ActiveMenu &menu = Menu(ctx);
+  MenuState &st = *menu.state;
+  ctx.PopId();
+  ctx.EndLayer();
+  st.count = st.counter;
+  if (st.close) {
+    ctx.ClosePopup(menu.id);
+  }
+  menu = {};
+}
+
+}  // namespace
+
+auto BeginContextMenu(Context &ctx, std::string_view label) -> bool {
+  const Id id = ctx.GetId(label);
+  if (!ctx.IsPopupOpen(id)) {
+    return false;
+  }
+  MenuState &st = ctx.State<MenuState>(id);
+  StartMenu(ctx, id, st, Rect{st.at.x, st.at.y, st.at.x + 1, st.at.y});
   return true;
 }
 
 auto MenuItem(Context &ctx, std::string_view text, std::string_view shortcut,
               bool enabled) -> bool {
+  return MenuItem(ctx, MenuItemSpec{text, shortcut, {}, enabled});
+}
+
+auto MenuItem(Context &ctx, const MenuItemSpec &item) -> bool {
   const Theme &t = ctx.theme();
   MenuState &st = *Menu(ctx).state;
   const int index = st.counter++;
   const Id id = ctx.GetId(static_cast<std::uint64_t>(index));
   const Interaction it = ctx.Interact(id);
+  const bool enabled = item.enabled;
   if (it.hovered && enabled) {
     st.highlight = index;
   }
@@ -98,8 +123,10 @@ auto MenuItem(Context &ctx, std::string_view text, std::string_view shortcut,
   NodeDesc row;
   row.id = id;
   row.layout.mode = LayoutMode::kRow;
-  row.layout.height = SizeSpec::Fixed(t.metrics.row_height + 2);
-  row.layout.padding = Padding::Xy(10, 0);
+  row.layout.height = item.hint.empty()
+                          ? SizeSpec::Fixed(t.metrics.row_height + 2)
+                          : SizeSpec::Fit(t.metrics.row_height + 2);
+  row.layout.padding = Padding::Xy(10, item.hint.empty() ? 0.0F : 4.0F);
   row.layout.gap = 24;
   row.layout.align = Align::kCenter;
   row.style.radii = gfx::CornerRadii::All(t.metrics.radius - 1);
@@ -108,22 +135,50 @@ auto MenuItem(Context &ctx, std::string_view text, std::string_view shortcut,
   }
   row.flags = kNodeInteractive;
   ctx.Open(row);
+  LayoutSpec lines;
+  lines.width = SizeSpec::Grow();
+  lines.gap = 1;
+  BeginColumn(ctx, lines);
   LabelOptions label;
   label.color = enabled ? t.colors.text : t.colors.text_disabled;
-  label.width = SizeSpec::Grow();
-  Label(ctx, text, label);
-  if (!shortcut.empty()) {
+  Label(ctx, item.text, label);
+  if (!item.hint.empty()) {
+    LabelOptions hint;
+    hint.muted = true;
+    hint.size = t.metrics.small_font_size;
+    hint.wrap = true;
+    hint.width = SizeSpec::Fit(0.0F, 340.0F);
+    Label(ctx, item.hint, hint);
+  }
+  End(ctx);
+  if (!item.shortcut.empty()) {
     LabelOptions sc;
     sc.muted = true;
     sc.mono = true;
     sc.size = t.metrics.small_font_size;
-    Label(ctx, shortcut, sc);
+    Label(ctx, item.shortcut, sc);
   }
   ctx.Close();
   if (chosen) {
     st.close = true;
   }
   return chosen;
+}
+
+void MenuHeading(Context &ctx, std::string_view text) {
+  const Theme &t = ctx.theme();
+  NodeDesc row;
+  row.layout.mode = LayoutMode::kRow;
+  row.layout.height = SizeSpec::Fixed(t.metrics.row_height);
+  row.layout.padding = {10, 6, 10, 0};
+  row.layout.align = Align::kEnd;
+  ctx.Open(row);
+  LabelOptions o;
+  o.muted = true;
+  o.bold = true;
+  o.size = t.metrics.small_font_size;
+  Label(ctx, text, o);
+  ctx.Close();
 }
 
 void MenuSeparator(Context &ctx) {
@@ -140,19 +195,89 @@ void MenuSeparator(Context &ctx) {
 }
 
 void EndContextMenu(Context &ctx) {
-  ActiveMenu &menu = Menu(ctx);
-  MenuState &st = *menu.state;
-  ctx.PopId();
-  ctx.EndLayer();
-  st.count = st.counter;
-  if (st.close) {
-    ctx.ClosePopup(menu.id);
+  FinishMenu(ctx);
+}
+
+auto BeginMenuButton(Context &ctx, std::string_view label, ButtonKind kind)
+    -> bool {
+  const Theme &t = ctx.theme();
+  const Id id = ctx.GetId(label);
+  const Id popup = HashCombine(id, 0x6D656E75ULL);
+  const Interaction it = ctx.Interact(id);
+  MenuState &st = ctx.State<MenuState>(popup);
+  bool open = ctx.IsPopupOpen(popup);
+  const auto start = [&] {
+    st = MenuState{};
+    ctx.OpenPopup(popup);
+  };
+  if (it.clicked && !ctx.PopupClosedByPress(popup)) {
+    if (open) {
+      ctx.ClosePopup(popup);
+    } else {
+      start();
+    }
+    ctx.SetFocus(id, false);
+  } else if (!open && ctx.HasFocus(id) &&
+             (ctx.ConsumeKey(Key::kEnter) || ctx.ConsumeKey(Key::kSpace) ||
+              ctx.ConsumeKey(Key::kDown))) {
+    start();
   }
-  menu = {};
+  open = ctx.IsPopupOpen(popup);
+  Color base = t.colors.surface_raised;
+  Color fg = t.colors.text;
+  if (kind == ButtonKind::kPrimary) {
+    base = t.colors.primary;
+    fg = t.colors.on_primary;
+  } else if (kind == ButtonKind::kFlat) {
+    base = t.colors.surface;
+  }
+  NodeDesc desc;
+  desc.id = id;
+  desc.layout.mode = LayoutMode::kRow;
+  desc.layout.height = SizeSpec::Fixed(t.metrics.control_height);
+  desc.layout.padding = {t.metrics.padding_x * 1.5F, 0, 22, 0};
+  desc.layout.align = Align::kCenter;
+  desc.style.fill = detail::InteractiveFill(t, base, it);
+  if (kind == ButtonKind::kFlat && !it.hovered && !it.pressed && !open) {
+    desc.style.fill.a = 0.0F;
+  }
+  if (kind == ButtonKind::kNormal) {
+    desc.style.border = open ? t.colors.focus : t.colors.border;
+    desc.style.border_width = t.metrics.border_width;
+  }
+  desc.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+  desc.flags = kNodeInteractive | kNodeFocusable | kNodeFocusRing;
+  const int node = ctx.Open(desc);
+  LabelOptions text;
+  text.color = fg;
+  Label(ctx, DisplayText(label), text);
+  ctx.Close();
+  const Color chevron = fg.WithAlpha(0.75F);
+  ctx.AddPainter(node, [chevron](PaintContext &pc, const Rect &r) {
+    const Vec2 c{r.x1 - 12, std::round(r.Center().y)};
+    pc.list.Line({c.x - 4, c.y - 2}, {c.x, c.y + 2}, 1.5F, chevron);
+    pc.list.Line({c.x, c.y + 2}, {c.x + 4, c.y - 2}, 1.5F, chevron);
+  });
+  if (!open) {
+    return false;
+  }
+  StartMenu(ctx, popup, st, ctx.LastRect(id).value_or(Rect{}));
+  return true;
+}
+
+void EndMenuButton(Context &ctx) {
+  FinishMenu(ctx);
 }
 
 auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
                  bool &open, float width) -> bool {
+  DialogOptions opt;
+  opt.width = width;
+  return BeginDialog(ctx, label, title, open, opt);
+}
+
+auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
+                 bool &open, const DialogOptions &opt) -> bool {
   if (!open) {
     return false;
   }
@@ -163,7 +288,7 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
   NodeDesc panel;
   panel.id = ctx.GetId("##panel");
   panel.layout.mode = LayoutMode::kColumn;
-  panel.layout.width = SizeSpec::Fixed(width);
+  panel.layout.width = SizeSpec::Fixed(opt.width);
   panel.layout.padding = Padding::All(16);
   panel.layout.gap = 10;
   panel.layout.align = Align::kStretch;
@@ -186,6 +311,36 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
     open = false;
   }
   End(ctx);
+  if (!opt.summary.empty()) {
+    NodeDesc answer;
+    answer.layout.mode = LayoutMode::kColumn;
+    answer.layout.width = SizeSpec::Grow();
+    answer.layout.padding = {10, 6, 8, 6};
+    answer.layout.gap = 2;
+    const Color edge =
+        opt.tone == Tone::kNeutral ? t.colors.accent : ToneColor(t, opt.tone);
+    answer.style.fill = edge.WithAlpha(0.10F);
+    answer.style.radii = gfx::CornerRadii::All(t.metrics.radius);
+    const int node = ctx.Open(answer);
+    LabelOptions line;
+    line.wrap = true;
+    line.width = SizeSpec::Grow();
+    line.color =
+        opt.tone == Tone::kNeutral ? t.colors.text : ToneColor(t, opt.tone);
+    Label(ctx, opt.summary, line);
+    if (!opt.detail.empty()) {
+      LabelOptions more;
+      more.wrap = true;
+      more.muted = true;
+      more.width = SizeSpec::Grow();
+      more.size = t.metrics.small_font_size + 1;
+      Label(ctx, opt.detail, more);
+    }
+    ctx.Close();
+    ctx.AddPainter(node, [edge](PaintContext &pc, const Rect &r) {
+      pc.list.FillRect({r.x0, r.y0, r.x0 + 3, r.y1}, edge);
+    });
+  }
   return true;
 }
 

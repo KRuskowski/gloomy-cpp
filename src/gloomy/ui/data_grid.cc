@@ -186,7 +186,12 @@ void ToggleSort(std::vector<data::SortKey> &sort, int column, bool add) {
   }
 }
 
-auto BadgeColor(const Palette &p, std::int64_t v) -> Color {
+auto BadgeColor(const Palette &p, const ColumnInfo &info, std::int64_t v)
+    -> Color {
+  if (v >= 0 && static_cast<std::size_t>(v) < info.enum_colors.size() &&
+      info.enum_colors[static_cast<std::size_t>(v)].a > 0.0F) {
+    return info.enum_colors[static_cast<std::size_t>(v)].WithAlpha(0.28F);
+  }
   const Color colors[] = {
       p.primary, p.accent, p.success, p.warning, p.info, p.error};
   return colors[static_cast<std::size_t>(std::abs(v)) % 6].WithAlpha(0.28F);
@@ -1041,7 +1046,7 @@ void PaintGrid(PaintContext &pc, const Rect &r, const data::TableView &view,
                            y + 3,
                            std::min(text_box.x0 - 2 + w, span.x1 - 2),
                            y + geo.row_h - 3},
-                          BadgeColor(c, s.GetInt64(col.column, row)),
+                          BadgeColor(c, info, s.GetInt64(col.column, row)),
                           gfx::CornerRadii::All((geo.row_h - 6) * 0.5F));
           }
           break;
