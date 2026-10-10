@@ -982,7 +982,12 @@ namespace {
 
 struct ScrollAreaState {
   double offset = 0.0;
+  /// The content node of this frame (EndScroll() adds its edge fades).
+  int node = -1;
 };
+
+/// Height of the fade at an edge with more content beyond it.
+constexpr float kEdgeFade = 18.0F;
 
 // The state lives under the content node's id, which BeginScroll() and
 // EndScroll() can both compute.
@@ -1031,17 +1036,35 @@ void BeginScroll(Context &ctx, std::string_view label, LayoutSpec layout) {
   area.layout.padding = layout.padding;
   area.layout.align = layout.align;
   area.flags = kNodeWheel | kNodeClip;
-  ctx.Open(area);
+  st.node = ctx.Open(area);
 }
 
 void EndScroll(Context &ctx) {
   ctx.Close();
   const Id content_id = ctx.GetId("##content");
-  ScrollBar(ctx,
-            ctx.GetId("##bar"),
-            ScrollState(ctx).offset,
-            ctx.LastContentSize(content_id).y,
-            ctx.LastInnerSize(content_id).y);
+  ScrollAreaState &st = ScrollState(ctx);
+  const double content = ctx.LastContentSize(content_id).y;
+  const double inner = ctx.LastInnerSize(content_id).y;
+  // Fade the edges that have more beyond them, so that content cut by a
+  // few pixels reads as "scroll for more" even where the bar is nearly
+  // full.
+  const bool above = st.offset > 0.5;
+  const bool below = content - inner - st.offset > 0.5;
+  if ((above || below) && st.node >= 0) {
+    const Color surface = ctx.OpenBackground();
+    const Color clear{surface.r, surface.g, surface.b, 0.0F};
+    ctx.AddPainter(st.node, [=](PaintContext &pc, const Rect &r) {
+      const float h = std::min(kEdgeFade, r.Height() * 0.25F);
+      if (above) {
+        pc.list.FillRectGradient({r.x0, r.y0, r.x1, r.y0 + h}, surface, clear);
+      }
+      if (below) {
+        pc.list.FillRectGradient({r.x0, r.y1 - h, r.x1, r.y1}, clear, surface);
+      }
+    });
+  }
+  st.node = -1;
+  ScrollBar(ctx, ctx.GetId("##bar"), st.offset, content, inner);
   ctx.PopId();
   ctx.Close();
 }

@@ -119,8 +119,8 @@ auto Canvas(Context &ctx, std::string_view label, CanvasState &state,
   NodeDesc desc;
   desc.id = result.id;
   desc.layout = options.layout;
-  desc.flags = kNodeInteractive | kNodeFocusable | kNodeWheel | kNodeClip |
-               kNodeFocusRing;
+  desc.flags = kNodeInteractive | kNodeFocusable | kNodeWheel | kNodeWheelZoom |
+               kNodeClip | kNodeFocusRing;
   const int node = ctx.Open(desc);
   ctx.Close();
   const Color background = options.background.a > 0.0F

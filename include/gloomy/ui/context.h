@@ -69,6 +69,27 @@ enum NodeFlag : std::uint16_t {
   kNodeClip = 1U << 3U,
   /// Draws a focus ring when it has keyboard focus.
   kNodeFocusRing = 1U << 4U,
+  /// With kNodeWheel: the wheel zooms rather than scrolls (charts, maps).
+  /// Inside a wheel node that can scroll, a plain wheel turn scrolls that
+  /// node and only Ctrl+wheel zooms, so a chart passing under the pointer
+  /// never stops a panel scrolling.
+  kNodeWheelZoom = 1U << 5U,
+};
+
+/// A node laid out outside where it can be seen whole: beyond its
+/// parent's content box on an axis the parent does not scroll, wrapped
+/// text taller than its box, or a layer's root beyond the viewport. Such
+/// content is cut off or drawn over its neighbours (Context::Overflows()).
+struct Overflow {
+  /// The node's id, kNoId for anonymous containers and text.
+  Id id = kNoId;
+  /// The node or its nearest ancestor with an id.
+  Id owner = kNoId;
+  Rect rect;
+  /// Where it should have fitted.
+  Rect bounds;
+  /// The node's text, or the first text inside it, to say what it is.
+  std::string text;
 };
 
 /// Everything Open() needs to create a node.
@@ -188,6 +209,10 @@ class Context {
 
   void Close();
 
+  /// The fill of the innermost open node that has one (the colour content
+  /// declared now is drawn on), else the theme's background.
+  auto OpenBackground() const -> Color;
+
   /// Adds a text leaf.
   auto Text(const TextSpec &text, const LayoutSpec &layout = {}, Id id = kNoId)
       -> int;
@@ -209,6 +234,13 @@ class Context {
 
   /// Rectangle of `id` in the previous frame.
   auto LastRect(Id id) const -> std::optional<Rect>;
+
+  /// Nodes of the previous frame laid out where they cannot be seen whole
+  /// (see Overflow); empty when everything fits or scrolls. For tests:
+  /// a screen whose content is cut off at some size shows up here.
+  auto Overflows() const -> const std::vector<Overflow> & {
+    return prev_overflows_;
+  }
 
   /// Content and inner size of a scroll node in the previous frame.
   auto LastContentSize(Id id) const -> Vec2;
@@ -244,8 +276,8 @@ class Context {
   /// turn it cannot take (up at the top, down at the bottom, or nothing to
   /// scroll) goes on the next frame to the wheel node around it, so a
   /// short grid or list inside a scrolled panel does not stop the panel
-  /// scrolling. Wheel nodes that declare nothing take every turn (canvas
-  /// and chart zoom).
+  /// scrolling. Wheel nodes that declare nothing take every turn; zoom
+  /// nodes (kNodeWheelZoom) inside a scrolling one take only Ctrl+wheel.
   /// @param[in] can_up Content above the view (wheel away scrolls).
   /// @param[in] can_down Content below the view (wheel towards scrolls).
   void WheelRange(Id id, bool can_up, bool can_down);
@@ -415,12 +447,20 @@ class Context {
 
   auto HitTest(Vec2 p, std::uint16_t flags) const -> Id;
 
-  /// The innermost wheel node at `p` that can take `wheel` (WheelRange()).
-  auto WheelTarget(Vec2 p, Vec2 wheel) const -> Id;
+  /// The innermost wheel node at `p` that can take `wheel` (WheelRange()),
+  /// passing zoom nodes by unless Ctrl is held in `mods` or nothing
+  /// around them scrolls (kNodeWheelZoom).
+  auto WheelTarget(Vec2 p, Vec2 wheel, std::uint8_t mods) const -> Id;
 
   void MoveFocus(bool backwards);
 
   void LayoutLayer(const Layer &layer);
+
+  /// Fills overflows_ from the laid-out tree.
+  void CollectOverflows();
+
+  /// The text of node `index` or of the first text node inside it.
+  auto FirstText(int index) const -> std::string;
 
   void PaintNode(int index, gfx::DrawList &list);
 
@@ -456,6 +496,8 @@ class Context {
   std::vector<HitEntry> prev_hits_;
   std::unordered_map<Id, NodeInfo> infos_;
   std::unordered_map<Id, NodeInfo> prev_infos_;
+  std::vector<Overflow> overflows_;
+  std::vector<Overflow> prev_overflows_;
   std::vector<std::pair<Id, int>> prev_focusables_;
   int prev_modal_layer_ = -1;
   std::vector<Rect> prev_layer_rects_;

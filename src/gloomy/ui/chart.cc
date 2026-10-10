@@ -447,7 +447,8 @@ void LineChart(Context &ctx, std::string_view label,
   area.id = plot_id;
   area.layout.width = SizeSpec::Grow();
   area.layout.height = options.height;
-  area.flags = kNodeInteractive | kNodeFocusable | kNodeWheel | kNodeFocusRing;
+  area.flags = kNodeInteractive | kNodeFocusable | kNodeWheel | kNodeWheelZoom |
+               kNodeFocusRing;
   const int node = ctx.Open(area);
   ctx.Close();
   const float hover = it.hovered ? ctx.mouse().x : -1.0F;

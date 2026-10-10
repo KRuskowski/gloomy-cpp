@@ -209,7 +209,7 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         break;
       }
       case InputEvent::Type::kWheel: {
-        const Id target = WheelTarget(mouse_, e.wheel);
+        const Id target = WheelTarget(mouse_, e.wheel, e.mods);
         if (target != kNoId) {
           Vec2 &w = wheel_[target];
           w = w + e.wheel;
@@ -244,11 +244,15 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
   }
 }
 
-auto Context::WheelTarget(Vec2 p, Vec2 wheel) const -> Id {
+auto Context::WheelTarget(Vec2 p, Vec2 wheel, std::uint8_t mods) const -> Id {
   // Bit the turn needs: up for positive y (content moves down), down for
   // negative; horizontal turns go to the innermost node.
   const std::uint8_t need = wheel.y > 0.0F ? 1U : (wheel.y < 0.0F ? 2U : 0U);
+  const bool ctrl = (mods & kModCtrl) != 0;
   Id innermost = kNoId;
+  Id zoom = kNoId;
+  // Whether a wheel node around the pointer scrolls at all.
+  bool scrolls = false;
   for (auto it = prev_hits_.rbegin(); it != prev_hits_.rend(); ++it) {
     if (prev_modal_layer_ >= 0 && it->layer < prev_modal_layer_) {
       break;
@@ -256,17 +260,37 @@ auto Context::WheelTarget(Vec2 p, Vec2 wheel) const -> Id {
     if ((it->flags & kNodeWheel) == 0 || !it->rect.Contains(p)) {
       continue;
     }
+    if ((it->flags & kNodeWheelZoom) != 0) {
+      if (ctrl) {
+        return it->id;
+      }
+      if (zoom == kNoId) {
+        zoom = it->id;
+      }
+      continue;
+    }
     if (innermost == kNoId) {
       innermost = it->id;
     }
     const auto range = prev_wheel_ranges_.find(it->id);
-    if (need == 0 || range == prev_wheel_ranges_.end() ||
-        (range->second & need) != 0) {
+    const bool declared = range != prev_wheel_ranges_.end();
+    if (declared && range->second != 0) {
+      scrolls = true;
+    }
+    if (need == 0 || !declared || (range->second & need) != 0) {
+      if (zoom != kNoId && declared && range->second == 0) {
+        // Nothing to scroll here: the zoom node inside may take it.
+        continue;
+      }
       return it->id;
     }
   }
-  // Nobody can scroll that way: the innermost node gets it (and clamps).
-  return innermost;
+  // A zoom node with nothing scrolling around it zooms; otherwise the
+  // innermost scrolling node gets the turn it cannot take (and clamps).
+  if (zoom != kNoId && !scrolls) {
+    return zoom;
+  }
+  return innermost != kNoId ? innermost : zoom;
 }
 
 void Context::WheelRange(Id id, bool can_up, bool can_down) {
@@ -327,6 +351,7 @@ void Context::EndFrame() {
   for (const Layer &layer : layers_) {
     LayoutLayer(layer);
   }
+  CollectOverflows();
 
   hits_.clear();
   infos_.clear();
@@ -369,6 +394,7 @@ void Context::EndFrame() {
   prev_wheel_ranges_.swap(wheel_ranges_);
   wheel_ranges_.clear();
   prev_infos_.swap(infos_);
+  prev_overflows_.swap(overflows_);
   prev_focusables_.swap(focusables_);
 }
 
@@ -503,6 +529,77 @@ void Context::PaintNode(int index, gfx::DrawList &list) {
   }
 }
 
+void Context::CollectOverflows() {
+  overflows_.clear();
+  // Half a pixel of rounding is no overflow.
+  constexpr float kSlack = 0.5F;
+  const Rect screen{0, 0, viewport_.x, viewport_.y};
+  auto outside = [](const Rect &r, const Rect &b, bool x, bool y) {
+    return (x && (r.x0 < b.x0 - kSlack || r.x1 > b.x1 + kSlack)) ||
+           (y && (r.y0 < b.y0 - kSlack || r.y1 > b.y1 + kSlack));
+  };
+  auto owner = [&](int i) {
+    for (; i >= 0; i = tree_.node(i).parent) {
+      if (nodes_[i].id != kNoId) {
+        return nodes_[i].id;
+      }
+    }
+    return kNoId;
+  };
+  auto add = [&](int i, const Rect &bounds) {
+    overflows_.push_back(
+        {nodes_[i].id, owner(i), tree_.node(i).rect, bounds, FirstText(i)});
+  };
+  for (int i = 0; i < tree_.size(); ++i) {
+    const LayoutNode &n = tree_.node(i);
+    if (n.rect.Empty()) {
+      // Nothing drawn.
+      continue;
+    }
+    if (n.parent < 0) {
+      // Tooltips place themselves; other roots stay on the screen.
+      if (layers_[nodes_[i].layer].kind != LayerKind::kTooltip &&
+          outside(n.rect, screen, true, true)) {
+        add(i, screen);
+      }
+    } else {
+      const LayoutNode &p = tree_.node(n.parent);
+      const Padding &pad = p.spec.padding;
+      const Rect inner{p.rect.x0 + pad.left,
+                       p.rect.y0 + pad.top,
+                       p.rect.x1 - pad.right,
+                       p.rect.y1 - pad.bottom};
+      // A scrolled axis may hold more than shows: scrolling reaches it.
+      if (outside(n.rect, inner, !p.spec.scroll_x, !p.spec.scroll_y)) {
+        add(i, inner);
+        continue;
+      }
+    }
+    if (nodes_[i].text >= 0) {
+      const TextItem &item = texts_[nodes_[i].text];
+      const float h =
+          n.rect.Height() - n.spec.padding.top - n.spec.padding.bottom;
+      if (item.spec.wrap && item.wrapped.Height() > h + kSlack) {
+        add(i, n.rect);
+      }
+    }
+  }
+}
+
+auto Context::FirstText(int index) const -> std::string {
+  if (nodes_[index].text >= 0) {
+    return std::string(TextOf(texts_[nodes_[index].text]));
+  }
+  for (int c = tree_.node(index).first_child; c >= 0;
+       c = tree_.node(c).next_sibling) {
+    std::string text = FirstText(c);
+    if (!text.empty()) {
+      return text;
+    }
+  }
+  return {};
+}
+
 void Context::PaintText(const TextItem &item, const Rect &rect,
                         gfx::DrawList &list) {
   const std::string_view text = TextOf(item);
@@ -586,6 +683,16 @@ void Context::Close() {
   if (stack_.size() > 1) {
     stack_.pop_back();
   }
+}
+
+auto Context::OpenBackground() const -> Color {
+  for (auto it = stack_.rbegin(); it != stack_.rend(); ++it) {
+    if (*it >= 0 && nodes_[*it].style.fill.a >= 1.0F &&
+        nodes_[*it].style.material != Material::kGlass) {
+      return nodes_[*it].style.fill;
+    }
+  }
+  return theme_.colors.background;
 }
 
 auto Context::Text(const TextSpec &spec, const LayoutSpec &layout, Id id)
