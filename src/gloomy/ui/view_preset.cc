@@ -327,19 +327,87 @@ auto DecodePreset(std::string_view text, const data::TableSource &source)
   return p;
 }
 
+namespace {
+
+/// The width of a row that fits its content last frame.
+struct FitRowState {
+  float width = 0.0F;
+};
+
+/// Width of a Button() with `text`.
+auto ButtonWidth(Context &ctx, std::string_view text) -> float {
+  const Theme &t = ctx.theme();
+  return std::ceil(
+             ctx.text().Measure(text, t.fonts.sans, t.metrics.font_size)) +
+         t.metrics.padding_x * 3.0F;
+}
+
+/// Width of a BeginMenuButton() with `text` (and its chevron).
+auto MenuButtonWidth(Context &ctx, std::string_view text) -> float {
+  const Theme &t = ctx.theme();
+  return std::ceil(
+             ctx.text().Measure(text, t.fonts.sans, t.metrics.font_size)) +
+         t.metrics.padding_x * 2.0F + 27.0F;
+}
+
+}  // namespace
+
 auto PresetBar(Context &ctx, std::string_view label,
                std::span<const ViewPreset> presets, int &active)
     -> PresetBarResult {
   const Theme &t = ctx.theme();
   PresetBarResult result;
   const Id id = ctx.GetId(label);
-  LayoutSpec row;
-  row.gap = 6;
-  row.align = Align::kCenter;
-  row.width = SizeSpec::Grow();
-  BeginRow(ctx, row);
+  constexpr float kGap = 6.0F;
+  constexpr float kChipPadding = 10.0F;
+  constexpr float kDot = 6.0F;
+
+  // Which chips fit the width the row had last frame: all of them with
+  // Save and Share, else the chosen one and those that fit before a
+  // "More" menu holding the rest, Save and Share.
+  auto &state = ctx.State<FitRowState>(id);
+  if (const std::optional<Rect> last = ctx.LastRect(id)) {
+    state.width = last->Width();
+  }
+  const float available = state.width > 0.0F ? state.width : ctx.viewport().x;
+  std::vector<float> widths;
+  std::vector<bool> keep;
+  float all =
+      ButtonWidth(ctx, "Save view") + ButtonWidth(ctx, "Share") + 2 * kGap;
+  for (std::size_t i = 0; i < presets.size(); ++i) {
+    const bool on = active == static_cast<int>(i);
+    const float w =
+        std::ceil(ctx.text().Measure(presets[i].name,
+                                     on ? t.fonts.bold : t.fonts.sans,
+                                     t.metrics.font_size)) +
+        2 * kChipPadding + (presets[i].curated ? kDot + 5.0F : 0.0F) +
+        2 * t.metrics.border_width;
+    widths.push_back(w);
+    keep.push_back(on);
+    all += w + kGap;
+  }
+  const bool crowded = all > available;
+  const std::vector<bool> shown =
+      crowded ? FitSegments(widths,
+                            keep,
+                            0.0F,
+                            kGap,
+                            available - MenuButtonWidth(ctx, "More") - kGap)
+              : std::vector<bool>(presets.size(), true);
+
+  NodeDesc row;
+  row.id = id;
+  row.layout.mode = LayoutMode::kRow;
+  row.layout.gap = kGap;
+  row.layout.align = Align::kCenter;
+  row.layout.width = SizeSpec::Grow();
+  row.flags = kNodeClip;
+  ctx.Open(row);
   ctx.PushId(id);
   for (std::size_t i = 0; i < presets.size(); ++i) {
+    if (!shown[i]) {
+      continue;
+    }
     const ViewPreset &p = presets[i];
     const Id chip_id = ctx.GetId(static_cast<std::uint64_t>(i));
     const Interaction it = ctx.Interact(chip_id);
@@ -356,7 +424,7 @@ auto PresetBar(Context &ctx, std::string_view label,
     chip.id = chip_id;
     chip.layout.mode = LayoutMode::kRow;
     chip.layout.height = SizeSpec::Fixed(t.metrics.control_height - 2);
-    chip.layout.padding = Padding::Xy(10, 0);
+    chip.layout.padding = Padding::Xy(kChipPadding, 0);
     chip.layout.gap = 5;
     chip.layout.align = Align::kCenter;
     chip.style.radii =
@@ -366,14 +434,14 @@ auto PresetBar(Context &ctx, std::string_view label,
     chip.style.border = on ? t.colors.primary : t.colors.border;
     chip.style.border_width = t.metrics.border_width;
     chip.flags = kNodeInteractive | kNodeFocusable | kNodeFocusRing;
-    const int node = ctx.Open(chip);
+    ctx.Open(chip);
     if (p.curated) {
       // Curated presets carry a small dot.
       NodeDesc dot;
-      dot.layout.width = SizeSpec::Fixed(6);
-      dot.layout.height = SizeSpec::Fixed(6);
+      dot.layout.width = SizeSpec::Fixed(kDot);
+      dot.layout.height = SizeSpec::Fixed(kDot);
       dot.style.fill = t.colors.accent;
-      dot.style.radii = gfx::CornerRadii::All(3);
+      dot.style.radii = gfx::CornerRadii::All(kDot * 0.5F);
       ctx.Open(dot);
       ctx.Close();
     }
@@ -384,20 +452,46 @@ auto PresetBar(Context &ctx, std::string_view label,
     text.color = on ? t.colors.text : t.colors.text_muted;
     ctx.Text(text);
     ctx.Close();
-    (void)node;
     if (!p.description.empty()) {
       Tooltip(ctx, chip_id, p.description);
     }
   }
   Spacer(ctx);
-  if (Button(ctx, "Save view", ButtonKind::kFlat)) {
-    result.save = true;
-  }
-  if (Button(ctx, "Share", ButtonKind::kFlat)) {
-    result.share = true;
+  if (!crowded) {
+    if (Button(ctx, "Save view", ButtonKind::kFlat)) {
+      result.save = true;
+    }
+    if (Button(ctx, "Share", ButtonKind::kFlat)) {
+      result.share = true;
+    }
+  } else if (BeginMenuButton(ctx, "More##more", ButtonKind::kFlat)) {
+    bool any = false;
+    for (std::size_t i = 0; i < presets.size(); ++i) {
+      if (!shown[i]) {
+        any = true;
+        if (MenuItem(
+                ctx,
+                MenuItemSpec{presets[i].name, {}, presets[i].description})) {
+          active = static_cast<int>(i);
+          result.changed = true;
+        }
+      }
+    }
+    if (any) {
+      MenuSeparator(ctx);
+    }
+    if (MenuItem(ctx,
+                 MenuItemSpec{"Save view", {}, "Keep this filter and sort"})) {
+      result.save = true;
+    }
+    if (MenuItem(ctx,
+                 MenuItemSpec{"Share view", {}, "Copy it as text to paste"})) {
+      result.share = true;
+    }
+    EndMenuButton(ctx);
   }
   ctx.PopId();
-  End(ctx);
+  ctx.Close();
   return result;
 }
 
@@ -486,8 +580,8 @@ auto PresetSegments(Context &ctx, std::string_view label,
     keep.push_back(true);
   }
   const float frame = SegmentedControlWidth(ctx, {}, -1);
-  const std::vector<bool> fits =
-      FitSegments(widths, keep, frame, 2.0F, available - views_width - kRowGap - 2.0F);
+  const std::vector<bool> fits = FitSegments(
+      widths, keep, frame, 2.0F, available - views_width - kRowGap - 2.0F);
   std::vector<int> shown;
   std::vector<int> crowded;
   for (std::size_t k = 0; k < candidates.size(); ++k) {

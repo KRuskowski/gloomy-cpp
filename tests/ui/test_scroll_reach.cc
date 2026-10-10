@@ -13,6 +13,7 @@
 #include "gloomy/ui/chart.h"
 #include "gloomy/ui/document_view.h"
 #include "gloomy/ui/overlays.h"
+#include "gloomy/ui/view_preset.h"
 #include "gloomy/ui/widgets.h"
 #include "test_support/ui_harness.h"
 
@@ -495,6 +496,108 @@ TEST(ScrollReachTest, ADialogFitsTheScreenAndItsBodyScrolls) {
   }
   h.Frame(ui);
   EXPECT_LE(ctx.LastRect(sign)->y1, ctx.LastRect(content)->y1 + 0.01F);
+}
+
+/// Tabs in a column `width` pixels wide.
+struct TabPanel {
+  float width = 600;
+  int selected = 0;
+  std::vector<std::string> labels{"Property",
+                                  "All",
+                                  "Stations",
+                                  "Ships",
+                                  "Prices",
+                                  "News",
+                                  "Factions",
+                                  "War (1)"};
+
+  void operator()(Context &ctx) {
+    LayoutSpec column;
+    column.width = SizeSpec::Fixed(width);
+    column.align = Align::kStretch;
+    BeginColumn(ctx, column);
+    Tabs(ctx, "##tabs", selected, labels);
+    End(ctx);
+  }
+};
+
+// Tabs too many for their bar keep the selected one and put the rest in a
+// "More" menu instead of running past the panel.
+TEST(FitTest, TabsThatDoNotFitGoIntoAMenu) {
+  UiHarness h;
+  TabPanel tabs;
+  auto ui = [&](Context &ctx) {
+    tabs(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  Context &ctx = h.ctx();
+  const Id bar = ctx.GetId("##tabs");
+  ctx.PushId(bar);
+  const Id more = ctx.GetId("More##tabs");
+  ctx.PopId();
+  EXPECT_FALSE(ctx.LastRect(more).has_value()) << "all fit at 600 px";
+  EXPECT_TRUE(ctx.Overflows().empty());
+
+  tabs.width = 300;
+  tabs.selected = 6;
+  h.Frame(ui);
+  h.Frame(ui);
+  EXPECT_TRUE(ctx.Overflows().empty()) << ctx.Overflows().front().text;
+  ASSERT_TRUE(ctx.LastRect(more).has_value());
+  ctx.PushId(bar);
+  EXPECT_TRUE(ctx.LastRect(ctx.GetId(std::uint64_t{6})).has_value())
+      << "the selected tab stays";
+  EXPECT_FALSE(ctx.LastRect(ctx.GetId(std::uint64_t{7})).has_value());
+  ctx.PopId();
+  // The menu chooses a tab that did not fit.
+  h.Frame(ui, UiHarness::Click(h.Center(more)));
+  h.Frame(ui, UiHarness::Key(Key::kDown));
+  h.Frame(ui, UiHarness::Key(Key::kEnter));
+  h.Frame(ui);
+  EXPECT_NE(tabs.selected, 6);
+  EXPECT_GE(tabs.selected, 3) << "one of those in the menu";
+}
+
+// Preset chips with Save and Share fit their row: at a narrow width the
+// chips that do not fit, Save and Share go into a "More" menu.
+TEST(FitTest, PresetChipsThatDoNotFitGoIntoAMenu) {
+  UiHarness h;
+  float width = 600;
+  int active = 0;
+  std::vector<ViewPreset> presets;
+  for (const char *name : {"Map order", "Freshest", "Mine", "By owner"}) {
+    ViewPreset p;
+    p.name = name;
+    p.curated = true;
+    presets.push_back(p);
+  }
+  PresetBarResult result;
+  auto ui = [&](Context &ctx) {
+    LayoutSpec column;
+    column.width = SizeSpec::Fixed(width);
+    column.align = Align::kStretch;
+    BeginColumn(ctx, column);
+    result = PresetBar(ctx, "##views", presets, active);
+    End(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  Context &ctx = h.ctx();
+  const Id row = ctx.GetId("##views");
+  ctx.PushId(row);
+  const Id share = ctx.GetId("Share");
+  const Id more = ctx.GetId("More##more");
+  ctx.PopId();
+  EXPECT_TRUE(ctx.LastRect(share).has_value());
+  EXPECT_FALSE(ctx.LastRect(more).has_value());
+  EXPECT_TRUE(ctx.Overflows().empty());
+  width = 280;
+  h.Frame(ui);
+  h.Frame(ui);
+  EXPECT_TRUE(ctx.Overflows().empty()) << ctx.Overflows().front().text;
+  EXPECT_FALSE(ctx.LastRect(share).has_value());
+  EXPECT_TRUE(ctx.LastRect(more).has_value());
 }
 
 }  // namespace

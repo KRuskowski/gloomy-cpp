@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "gloomy/core/utf8.h"
+#include "gloomy/ui/overlays.h"
 #include "ui/widget_util.h"
 
 namespace gloomy::ui {
@@ -810,6 +811,15 @@ auto Dropdown(Context &ctx, std::string_view label, int &selected,
   return changed;
 }
 
+namespace {
+
+/// The width the tab bar had last frame.
+struct TabsState {
+  float width = 0.0F;
+};
+
+}  // namespace
+
 auto Tabs(Context &ctx, std::string_view label, int &selected,
           std::span<const std::string> labels) -> bool {
   const Theme &t = ctx.theme();
@@ -824,12 +834,46 @@ auto Tabs(Context &ctx, std::string_view label, int &selected,
       selected = (selected + 1) % count;
     }
   }
+  // Tabs that do not fit the bar's width last frame go into a "More" menu
+  // at its end, last first; the selected one always stays.
+  const float pad = t.metrics.padding_x * 1.5F;
+  auto &state = ctx.State<TabsState>(id);
+  if (const std::optional<Rect> last = ctx.LastRect(id)) {
+    state.width = last->Width();
+  }
+  const float available = state.width > 0.0F ? state.width : ctx.viewport().x;
+  std::vector<float> widths(labels.size());
+  float total = 0.0F;
+  for (int i = 0; i < count; ++i) {
+    widths[i] = std::ceil(ctx.text().Measure(
+                    labels[i],
+                    i == selected ? t.fonts.bold : t.fonts.sans,
+                    t.metrics.font_size)) +
+                2 * pad;
+    total += widths[i];
+  }
+  std::vector<bool> shown(labels.size(), true);
+  if (total > available + 0.5F) {
+    const float more = std::ceil(ctx.text().Measure(
+                           "More", t.fonts.sans, t.metrics.font_size)) +
+                       t.metrics.padding_x * 2.0F + 27.0F;
+    for (int i = count - 1; i >= 0 && total > available - more; --i) {
+      if (i != selected) {
+        shown[i] = false;
+        total -= widths[i];
+      }
+    }
+  }
+  const bool crowded =
+      std::find(shown.begin(), shown.end(), false) != shown.end();
+
   NodeDesc bar;
   bar.id = id;
   bar.layout.mode = LayoutMode::kRow;
   bar.layout.width = SizeSpec::Grow();
   bar.layout.height = SizeSpec::Fixed(t.metrics.control_height + 4);
-  bar.flags = kNodeFocusable | kNodeFocusRing;
+  bar.layout.align = Align::kCenter;
+  bar.flags = kNodeFocusable | kNodeFocusRing | kNodeClip;
   const int bar_node = ctx.Open(bar);
   const Color divider = t.colors.divider;
   ctx.AddPainter(
@@ -840,6 +884,9 @@ auto Tabs(Context &ctx, std::string_view label, int &selected,
       true);
   ctx.PushId(id);
   for (int i = 0; i < count; ++i) {
+    if (!shown[i]) {
+      continue;
+    }
     const Id tab_id = ctx.GetId(static_cast<std::uint64_t>(i));
     const Interaction it = ctx.Interact(tab_id);
     if (it.clicked) {
@@ -851,7 +898,7 @@ auto Tabs(Context &ctx, std::string_view label, int &selected,
     tab.id = tab_id;
     tab.layout.mode = LayoutMode::kRow;
     tab.layout.height = SizeSpec::Grow();
-    tab.layout.padding = Padding::Xy(t.metrics.padding_x * 1.5F, 0);
+    tab.layout.padding = Padding::Xy(pad, 0);
     tab.layout.align = Align::kCenter;
     tab.flags = kNodeInteractive;
     if (it.hovered && !active) {
@@ -866,6 +913,17 @@ auto Tabs(Context &ctx, std::string_view label, int &selected,
       ctx.AddPainter(node, [=](PaintContext &pc, const Rect &r) {
         pc.list.FillRect({r.x0, r.y1 - 2, r.x1, r.y1}, line);
       });
+    }
+  }
+  if (crowded) {
+    Spacer(ctx);
+    if (BeginMenuButton(ctx, "More##tabs", ButtonKind::kFlat)) {
+      for (int i = 0; i < count; ++i) {
+        if (!shown[i] && MenuItem(ctx, labels[i])) {
+          selected = i;
+        }
+      }
+      EndMenuButton(ctx);
     }
   }
   ctx.PopId();
