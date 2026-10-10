@@ -1,5 +1,7 @@
 #include "gloomy/ui/theme.h"
 
+#include <algorithm>
+
 namespace gloomy::ui {
 
 namespace {
@@ -102,6 +104,27 @@ auto Theme::HighContrast(const text::DefaultFonts &fonts) -> Theme {
   c.divider = Color::Rgb(0xBDBDBD);
   c.shadow = Color::Rgba(0x00000000);
   c.scrim = Color::Rgba(0x000000B3);
+  return t;
+}
+
+auto Theme::Scaled(float factor) const -> Theme {
+  const float f = std::clamp(factor, kMinScale, kMaxScale);
+  Theme t = *this;
+  Metrics &m = t.metrics;
+  for (float *v : {&m.font_size,
+                   &m.small_font_size,
+                   &m.heading_font_size,
+                   &m.spacing,
+                   &m.padding_x,
+                   &m.padding_y,
+                   &m.radius,
+                   &m.row_height,
+                   &m.control_height,
+                   &m.scrollbar_width}) {
+    *v *= f;
+  }
+  m.border_width = std::max(1.0F, m.border_width * f);
+  m.focus_width = std::max(1.0F, m.focus_width * f);
   return t;
 }
 
