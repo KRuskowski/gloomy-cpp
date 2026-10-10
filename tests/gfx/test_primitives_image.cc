@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 
 #include "gloomy/core/atlas.h"
 #include "gloomy/gfx/draw_list.h"
@@ -55,6 +56,38 @@ TEST_F(PrimitivesImageTest, ShapesMatchReference) {
 
   const Image image = Render(list, {320, 200});
   testing::ExpectMatchesReference(image, "primitives");
+}
+
+// Hexagons: a flat-top grid that tiles without gaps (columns 1.5 R apart,
+// odd ones half a cell down), a pointy-top one and outlines.
+TEST_F(PrimitivesImageTest, HexagonsMatchReference) {
+  DrawList list;
+  const float r = 12.0F;
+  const float h = r * std::sqrt(3.0F);
+  for (int col = 0; col < 6; ++col) {
+    for (int row = 0; row < 4; ++row) {
+      const float x = 20.0F + 1.5F * r * static_cast<float>(col);
+      const float y = 20.0F + h * (static_cast<float>(row) +
+                                   0.5F * static_cast<float>(col % 2));
+      list.FillHexagon(
+          {x, y},
+          r,
+          (col + row) % 2 == 0 ? Color::Rgb(0x313244) : Color::Rgb(0x45475A));
+    }
+  }
+  list.FillHexagon({190, 50}, 30, Color::Rgb(0x89B4FA), true);
+  list.StrokeHexagon({260, 50}, 30, Color::Rgb(0xA6E3A1), 2);
+  list.StrokeHexagon({260, 50}, 18, Color::Rgba(0xF9E2AF80), 1, true);
+  const Image image = Render(list, {320, 110});
+  testing::ExpectMatchesReference(image, "hexagons");
+  // The pointy-top hexagon (circumradius 30, inradius 26) reaches 27 px
+  // up to its vertex but not 27 px to the side, where its edge is.
+  const auto red = [&](int x, int y) {
+    return image.At(x, y)[0];
+  };
+  EXPECT_EQ(red(190, 50), 0x89);
+  EXPECT_EQ(red(190 + 27, 50), 0x1E) << "pointy-top: no vertex on x";
+  EXPECT_EQ(red(190, 50 - 27), 0x89) << "pointy-top: vertex up";
 }
 
 TEST_F(PrimitivesImageTest, EmptyListClearsOnly) {

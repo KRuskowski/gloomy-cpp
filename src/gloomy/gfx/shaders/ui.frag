@@ -32,6 +32,7 @@ const uint kCircle = 1u;
 const uint kLine = 2u;
 const uint kGlyph = 3u;
 const uint kGlass = 4u;
+const uint kHexagon = 5u;
 
 // Rounded box; radii are top-left, top-right, bottom-right, bottom-left
 // with y pointing down.
@@ -40,6 +41,16 @@ float RoundedBox(vec2 p, vec2 b, vec4 r) {
   rr = min(rr, min(b.x, b.y));
   vec2 q = abs(p) - b + rr;
   return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - rr;
+}
+
+// Regular hexagon with inradius r, flat top and bottom (vertices at
+// x = +-r / cos(30 deg)).
+float Hexagon(vec2 p, float r) {
+  const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
+  p = abs(p);
+  p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy;
+  p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+  return length(p) * sign(p.y);
 }
 
 // Coverage of a pixel at signed distance d from the edge.
@@ -88,6 +99,10 @@ void main() {
     float d;
     if (kind == kCircle) {
       d = length(v_local) - v_half.x;
+    } else if (kind == kHexagon) {
+      // v_half.x is the circumradius; pointy-top turns it a quarter.
+      vec2 q = v_radii.x > 0.5 ? v_local.yx : v_local;
+      d = Hexagon(q, v_half.x * 0.866025404);
     } else if (kind == kLine) {
       d = RoundedBox(v_local, v_half, vec4(0.0));
     } else if (kind == kGlass) {

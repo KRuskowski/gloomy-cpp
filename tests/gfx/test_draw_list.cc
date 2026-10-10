@@ -16,6 +16,23 @@ TEST(DrawListTest, FillRectRecordsOneInstance) {
   EXPECT_EQ(inst.kind, static_cast<std::uint32_t>(PrimitiveKind::kRect));
 }
 
+TEST(DrawListTest, HexagonsRecordTheirCircumcircleAndOrientation) {
+  DrawList list;
+  list.FillHexagon({50, 40}, 10, Color::Rgb(0xFFFFFF));
+  list.StrokeHexagon({50, 40}, 10, Color::Rgb(0xFFFFFF), 2, true);
+  ASSERT_EQ(list.instances().size(), 2U);
+  const Instance &fill = list.instances()[0];
+  EXPECT_EQ(fill.kind, static_cast<std::uint32_t>(PrimitiveKind::kHexagon));
+  EXPECT_FLOAT_EQ(fill.rect[0], 40.0F);
+  EXPECT_FLOAT_EQ(fill.rect[3], 50.0F);
+  EXPECT_FLOAT_EQ(fill.radii[0], 0.0F);
+  EXPECT_FLOAT_EQ(fill.stroke, 0.0F);
+  EXPECT_FLOAT_EQ(list.instances()[1].radii[0], 1.0F);
+  EXPECT_FLOAT_EQ(list.instances()[1].stroke, 2.0F);
+  list.FillHexagon({50, 40}, 0, Color::Rgb(0xFFFFFF));
+  EXPECT_EQ(list.instances().size(), 2U) << "no size, nothing drawn";
+}
+
 TEST(DrawListTest, ClipStackIntersects) {
   DrawList list;
   list.PushClip(Rect{0, 0, 100, 100});

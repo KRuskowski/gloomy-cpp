@@ -40,6 +40,7 @@ const uint kCircle = 1u;
 const uint kLine = 2u;
 const uint kGlyph = 3u;
 const uint kGlass = 4u;
+const uint kHexagon = 5u;
 
 void main() {
   vec2 corner = kCorners[gl_VertexIndex];

@@ -112,6 +112,27 @@ void DrawList::StrokeCircle(Vec2 center, float radius, const Color &c,
   inst.stroke = width;
 }
 
+void DrawList::FillHexagon(Vec2 center, float radius, const Color &c,
+                           bool pointy) {
+  StrokeHexagon(center, radius, c, 0.0F, pointy);
+}
+
+void DrawList::StrokeHexagon(Vec2 center, float radius, const Color &c,
+                             float width, bool pointy) {
+  const Rect r{center.x - radius,
+               center.y - radius,
+               center.x + radius,
+               center.y + radius};
+  if (radius <= 0.0F || Culled(r)) {
+    return;
+  }
+  Instance &inst = Push(PrimitiveKind::kHexagon, r);
+  inst.color = c.Pack();
+  inst.color2 = inst.color;
+  inst.stroke = width;
+  inst.radii[0] = pointy ? 1.0F : 0.0F;
+}
+
 void DrawList::Line(Vec2 a, Vec2 b, float width, const Color &c) {
   const Rect bounds{std::fmin(a.x, b.x) - width,
                     std::fmin(a.y, b.y) - width,

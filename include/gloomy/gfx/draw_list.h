@@ -19,6 +19,9 @@ enum class PrimitiveKind : std::uint32_t {
   /// Frosted glass: the host scene's blurred backdrop under the shape,
   /// tinted (docs/design.md section 6.5); a flat fill without a backdrop.
   kGlass = 4,
+  /// A regular hexagon in its circumcircle's bounds; radii[0] 1 for
+  /// pointy-top (vertices up and down), 0 for flat-top.
+  kHexagon = 5,
 };
 
 /// How a glass shape looks over the blurred backdrop.
@@ -107,6 +110,16 @@ class DrawList {
   /// axis-aligned 1 px lines put the end points on pixel centres (x.5), or
   /// use FillRect.
   void Line(Vec2 a, Vec2 b, float width, const Color &c);
+
+  /// A regular hexagon of circumradius `radius` (centre to vertex), flat
+  /// top and bottom unless `pointy` (vertices up and down); hex grids
+  /// tile with flat-top cells `1.5 * radius` apart in x.
+  void FillHexagon(Vec2 center, float radius, const Color &c,
+                   bool pointy = false);
+
+  /// The outline of FillHexagon()'s hexagon, `width` pixels inside it.
+  void StrokeHexagon(Vec2 center, float radius, const Color &c, float width,
+                     bool pointy = false);
 
   /// A frosted glass (optionally rounded) rectangle: the blurred backdrop
   /// under it, darkened and tinted as `look` says, when the renderer has a
