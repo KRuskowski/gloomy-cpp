@@ -41,6 +41,9 @@ struct ColumnInfo {
   std::string title;
   ColumnType type = ColumnType::kText;
   std::vector<std::string> enum_labels;
+  /// Optional colour per enum value (badges, chips); alpha 0 or a value
+  /// past the end falls back to the palette's rotation.
+  std::vector<Color> enum_colors;
   /// Digits after the decimal point for doubles.
   int decimals = 2;
   /// Appended to formatted numbers (" Cr", " m3").
