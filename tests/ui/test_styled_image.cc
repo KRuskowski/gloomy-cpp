@@ -109,6 +109,13 @@ void Documents(Context &ctx) {
   End(ctx);
 }
 
+const std::vector<CellColumn> kManifest = {
+    {"Good", 0, CellAlign::kLeft, {}},
+    {"Qty", 60, CellAlign::kRight, {}},
+    {"Cost", 70, CellAlign::kRight, {}},
+    {"Best buyer", 160, CellAlign::kLeft, {}},
+};
+
 void Ship(Context &ctx) {
   static const std::vector<SchematicRoom> kRooms = {
       {.label = "Engines",
@@ -140,22 +147,22 @@ void Ship(Context &ctx) {
       {"Sensors", 4, 2, 0, Tone::kNeutral, "18 km", {}, icon::kNoIcon},
       {"Engines", 4, 3, 0, Tone::kGood, "290 m/s", {}, icon::kNoIcon},
   };
+  static const std::vector<Cell> kFood = {
+      {"Food", Tone::kNeutral, {}, false, false, {}},
+      {"360", Tone::kNeutral, {}, false, false, {}},
+      {"12 Cr", Tone::kNeutral, {}, false, false, {}},
+      {"Lunon Habitat 15", Tone::kGood, {}, false, false, {}}};
+  static const std::vector<Cell> kWater = {
+      {"Water", Tone::kNeutral, {}, false, false, {}},
+      {"140", Tone::kNeutral, {}, false, false, {}},
+      {"8 Cr", Tone::kNeutral, {}, false, false, {}},
+      {"no buyer known", Tone::kNeutral, {}, false, true, {}}};
   static const std::vector<CargoLot> kLots = {
-      {"Food",
-       360.0,
-       "360 units",
-       Color::Rgb(0x60C060),
-       icon::kNoIcon,
-       CargoForm::kCrate,
-       {}},
-      {"Water",
-       140.0,
-       "140 units",
-       Color::Rgb(0x4080E0),
-       icon::kNoIcon,
-       CargoForm::kTank,
-       {}},
+      {"Food", 360.0, Color::Rgb(0x60C060), {}, kFood},
+      {"Water", 140.0, Color::Rgb(0x4080E0), {}, kWater},
   };
+  static const std::vector<HoldSection> kSections = {
+      {"Container", 1000.0, kLots}};
   LayoutSpec root;
   root.padding = Padding::All(12);
   root.gap = 12;
@@ -174,10 +181,8 @@ void Ship(Context &ctx) {
   spec.height = 150;
   ShipSchematic(ctx, "##ship", spec);
   CargoHoldSpec hold;
-  hold.capacity = 1000.0;
-  hold.lots = kLots;
-  hold.bays = 32;
-  hold.title = "Hold";
+  hold.sections = kSections;
+  hold.columns = kManifest;
   CargoHold(ctx, "##hold", hold);
   End(ctx);
 }
@@ -211,15 +216,115 @@ TEST_F(StyledImageTest, Documents) {
   testing::ExpectMatchesReference(Render(h, {760, 640}), "styled_documents");
 }
 
+/// Goods of the hold matrix.
+const Color kFoodColor = Color::Rgb(0x60C060);
+const Color kPartsColor = Color::Rgb(0xC08040);
+const Color kMetalColor = Color::Rgb(0xA0A8B8);
+const Color kOreColor = Color::Rgb(0xB06040);
+const Color kIceColor = Color::Rgb(0x80D0F0);
+
+/// One class's hold empty, half, full and with mixed goods (a unit split
+/// between two goods, a partly filled last unit).
+struct HoldCase {
+  std::string_view name;
+  std::string_view type;
+  double capacity;
+  std::vector<CargoLot> half;
+  std::vector<CargoLot> full;
+  std::vector<CargoLot> mixed;
+};
+
+auto HoldCases() -> std::vector<HoldCase> {
+  return {
+      {"Courier (120 m3)",
+       "Container",
+       120.0,
+       {{"Food", 60.0, kFoodColor, {}, {}}},
+       {{"Food", 120.0, kFoodColor, {}, {}}},
+       {{"Food", 35.0, kFoodColor, {}, {}},
+        {"Hull Parts", 22.0, kPartsColor, {}, {}},
+        {"Refined Metal", 17.0, kMetalColor, {}, {}}}},
+      {"Container Freighter (600 m3)",
+       "Container",
+       600.0,
+       {{"Food", 300.0, kFoodColor, {}, {}}},
+       {{"Food", 600.0, kFoodColor, {}, {}}},
+       {{"Food", 210.0, kFoodColor, {}, {}},
+        {"Hull Parts", 140.0, kPartsColor, {}, {}},
+        {"Refined Metal", 95.0, kMetalColor, {}, {}}}},
+      {"Bulk Freighter (3,000 m3)",
+       "Bulk",
+       3000.0,
+       {{"Ore", 1500.0, kOreColor, {}, {}}},
+       {{"Ore", 3000.0, kOreColor, {}, {}}},
+       {{"Ore", 1240.0, kOreColor, {}, {}}, {"Ice", 830.0, kIceColor, {}, {}}}},
+  };
+}
+
+/// Each class in four states, or (with `shared`) the three classes half
+/// full on one fleet-wide unit.
+void Holds(Context &ctx, double shared) {
+  static const std::vector<HoldCase> kCases = HoldCases();
+  LayoutSpec root;
+  root.padding = Padding::All(12);
+  root.gap = 10;
+  root.width = SizeSpec::Grow();
+  root.align = Align::kStretch;
+  BeginColumn(ctx, root);
+  ctx.PushId("##holds");
+  for (std::size_t i = 0; i < kCases.size(); ++i) {
+    const HoldCase &c = kCases[i];
+    ctx.PushId(static_cast<std::uint64_t>(i) + 1);
+    LabelOptions bold;
+    bold.bold = true;
+    Label(ctx, c.name, bold);
+    const std::vector<HoldSection> sections =
+        shared > 0.0 ? std::vector<HoldSection>{{c.type, c.capacity, c.mixed}}
+                     : std::vector<HoldSection>{{"Empty", c.capacity, {}},
+                                                {"Half", c.capacity, c.half},
+                                                {"Full", c.capacity, c.full},
+                                                {"Mixed", c.capacity, c.mixed}};
+    CargoHoldSpec spec;
+    spec.sections = sections;
+    spec.unit_volume = shared;
+    CargoHold(ctx, "##hold", spec);
+    ctx.PopId();
+  }
+  ctx.PopId();
+  End(ctx);
+}
+
+TEST_F(StyledImageTest, HoldsFromCourierToBulkFreighter) {
+  testing::UiHarness h({560, 720});
+  auto ui = [](Context &ctx) {
+    Holds(ctx, 0.0);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {560, 720}), "styled_holds");
+}
+
+TEST_F(StyledImageTest, HoldsOnASharedUnit) {
+  testing::UiHarness h({760, 400});
+  auto ui = [](Context &ctx) {
+    Holds(ctx, 50.0);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {760, 400}), "styled_holds_shared");
+}
+
 TEST_F(StyledImageTest, ShipAndHold) {
-  testing::UiHarness h({640, 420});
+  testing::UiHarness h({640, 460});
   auto ui = [](Context &ctx) {
     Ship(ctx);
   };
   h.Frame(ui);
   h.Frame(ui);
   h.Frame(ui);
-  testing::ExpectMatchesReference(Render(h, {640, 420}), "styled_ship");
+  testing::ExpectMatchesReference(Render(h, {640, 460}), "styled_ship");
 }
 
 }  // namespace
