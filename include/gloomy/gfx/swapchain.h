@@ -9,6 +9,7 @@
 
 #include "gloomy/core/color.h"
 #include "gloomy/gfx/device_context.h"
+#include "gloomy/gfx/scene_renderer.h"
 
 namespace gloomy::gfx {
 
@@ -43,8 +44,14 @@ class Swapchain {
   /// @return std::nullopt when nothing can be drawn (minimised window).
   auto BeginFrame(VkExtent2D extent) -> std::optional<Frame>;
 
-  /// Transitions the acquired image and begins dynamic rendering on it.
-  void BeginRendering(const Color &clear);
+  /// Transitions the acquired image for a host scene to draw into before
+  /// the UI (SceneRenderer); BeginRendering() must then load it.
+  auto BeginScene() -> ColorTarget;
+
+  /// Transitions the acquired image and begins dynamic rendering on it,
+  /// cleared to `clear`; with `load` (after BeginScene()) it keeps what
+  /// the scene drew instead.
+  void BeginRendering(const Color &clear, bool load = false);
 
   /// Ends rendering, submits and presents.
   void EndFrame();

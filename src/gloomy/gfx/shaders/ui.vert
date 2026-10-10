@@ -12,8 +12,12 @@ layout(location = 6) in float a_stroke;
 layout(location = 7) in float a_soft;
 layout(location = 8) in uint a_kind;
 
+// Shared with ui.frag.
 layout(push_constant) uniform Push {
   vec2 viewport;
+  // 1 when a blurred backdrop is bound for glass, else 0.
+  float has_backdrop;
+  float pad;
 } pc;
 
 layout(location = 0) out vec2 v_local;
@@ -25,6 +29,7 @@ layout(location = 5) flat out vec4 v_radii;
 layout(location = 6) flat out vec4 v_clip;
 layout(location = 7) flat out vec2 v_params;
 layout(location = 8) flat out uint v_kind;
+layout(location = 9) flat out vec2 v_glass;
 
 const vec2 kCorners[6] = vec2[](
     vec2(0.0, 0.0), vec2(1.0, 0.0), vec2(1.0, 1.0),
@@ -34,12 +39,14 @@ const uint kRect = 0u;
 const uint kCircle = 1u;
 const uint kLine = 2u;
 const uint kGlyph = 3u;
+const uint kGlass = 4u;
 
 void main() {
   vec2 corner = kCorners[gl_VertexIndex];
   uint kind = a_kind & 0xFFu;
   vec2 pos;
   v_uv = vec2(0.0);
+  v_glass = vec2(0.0);
   if (kind == kLine) {
     // Quad along the line, one pixel of antialiasing margin around it.
     vec2 a = a_rect.xy;
@@ -66,6 +73,11 @@ void main() {
     pos = center + local;
     v_local = local;
     v_half = half_size;
+    if (kind == kGlass) {
+      // Glass: darken, noise, rim strength and width.
+      v_uv = a_uv.xy;
+      v_glass = a_uv.zw;
+    }
   }
   v_color = unpackUnorm4x8(a_color);
   v_color2 = unpackUnorm4x8(a_color2);

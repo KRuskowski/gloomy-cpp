@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "gloomy/core/atlas.h"
+#include "gloomy/gfx/backdrop_blur.h"
 #include "gloomy/gfx/device_context.h"
 #include "gloomy/gfx/offscreen_target.h"
 #include "gloomy/gfx/swapchain.h"
@@ -37,6 +38,10 @@ auto StartTheme(const ShellOptions &options, const text::DefaultFonts &fonts)
   return options.theme ? options.theme(fonts) : ui::Theme::Dark(fonts);
 }
 
+auto BlurLevels(const ui::Context &ui) -> int {
+  return gfx::BackdropBlur::LevelsForRadius(ui.theme().glass.blur_radius);
+}
+
 auto Headless(const ShellOptions &options) -> int {
   gfx::DeviceOptions device_options;
   device_options.app_name = options.title;
@@ -54,6 +59,13 @@ auto Headless(const ShellOptions &options) -> int {
   text::TextSystem text_system(fonts, atlas);
   ui::Context ui(text_system, StartTheme(options, info.fonts));
   info.headless = true;
+  // The host scene renders once, for the screenshot, after the frames.
+  std::unique_ptr<gfx::SceneRenderer> scene;
+  std::unique_ptr<gfx::BackdropBlur> blur;
+  if (options.scene) {
+    scene = options.scene(**ctx, gfx::OffscreenTarget::kFormat, 1);
+    blur = std::make_unique<gfx::BackdropBlur>(**ctx, 1);
+  }
   const Vec2 viewport{static_cast<float>(options.size.width),
                       static_cast<float>(options.size.height)};
   std::int64_t frame = 0;
@@ -90,8 +102,19 @@ auto Headless(const ShellOptions &options) -> int {
   }
   gfx::UiRenderer renderer(**ctx, gfx::OffscreenTarget::kFormat, atlas);
   gfx::OffscreenTarget target(**ctx, options.size);
-  const Image image = gfx::RenderToImage(
-      **ctx, renderer, target, ui.draw_lists(), ui.theme().colors.background);
+  const Image image = scene != nullptr && scene->Active()
+                          ? gfx::RenderSceneToImage(**ctx,
+                                                    renderer,
+                                                    *blur,
+                                                    *scene,
+                                                    target,
+                                                    ui.draw_lists(),
+                                                    BlurLevels(ui))
+                          : gfx::RenderToImage(**ctx,
+                                               renderer,
+                                               target,
+                                               ui.draw_lists(),
+                                               ui.theme().colors.background);
   if (auto saved = SavePng(image, options.screenshot); !saved) {
     std::fprintf(stderr, "%s\n", saved.error().c_str());
     return 1;
@@ -136,6 +159,14 @@ auto Windowed(const ShellOptions &options) -> int {
   gfx::Swapchain swapchain(**ctx, (*window)->DrawableExtent());
   gfx::UiRenderer renderer(
       **ctx, swapchain.format(), atlas, gfx::Swapchain::kFramesInFlight);
+  std::unique_ptr<gfx::SceneRenderer> scene;
+  std::unique_ptr<gfx::BackdropBlur> blur;
+  if (options.scene) {
+    scene = options.scene(
+        **ctx, swapchain.format(), gfx::Swapchain::kFramesInFlight);
+    blur = std::make_unique<gfx::BackdropBlur>(**ctx,
+                                               gfx::Swapchain::kFramesInFlight);
+  }
   const auto start = Clock::now();
   auto last = start;
   std::vector<ui::InputEvent> events;
@@ -165,8 +196,18 @@ auto Windowed(const ShellOptions &options) -> int {
     ++info.frame;
     ui.EndFrame();
     info.ui_ms = Ms(Clock::now() - now);
+    const bool with_scene = scene != nullptr && scene->Active();
+    VkImageView backdrop = VK_NULL_HANDLE;
+    if (with_scene) {
+      const gfx::Backdrop b =
+          scene->Record(frame->cmd, frame->slot, swapchain.BeginScene());
+      if (b.view != VK_NULL_HANDLE) {
+        backdrop = blur->Record(frame->cmd, frame->slot, b, BlurLevels(ui));
+      }
+    }
+    renderer.SetBackdrop(frame->slot, backdrop);
     renderer.Prepare(frame->cmd, frame->slot, ui.draw_lists());
-    swapchain.BeginRendering(ui.theme().colors.background);
+    swapchain.BeginRendering(ui.theme().colors.background, with_scene);
     renderer.Draw(frame->cmd, frame->slot, frame->extent);
     swapchain.EndFrame();
   }

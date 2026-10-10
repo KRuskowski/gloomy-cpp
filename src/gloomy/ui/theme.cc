@@ -128,4 +128,34 @@ auto Theme::Scaled(float factor) const -> Theme {
   return t;
 }
 
+auto GlassStyle::On(Surface surface) const -> bool {
+  switch (surface) {
+    case Surface::kPanel:
+      return panels;
+    case Surface::kCard:
+      return cards;
+    case Surface::kMenu:
+      return menus;
+    case Surface::kDialog:
+      return dialogs;
+    case Surface::kRadial:
+      return radial;
+  }
+  return false;
+}
+
+auto Theme::WithGlass(float surface_alpha) const -> Theme {
+  Theme t = *this;
+  GlassStyle &g = t.glass;
+  g.panels = g.cards = g.menus = g.dialogs = g.radial = true;
+  if (g.fallback.a <= 0.0F) {
+    g.fallback = colors.surface;
+  }
+  Palette &c = t.colors;
+  c.surface = c.surface.WithAlpha(surface_alpha);
+  c.surface_alt = c.surface_alt.WithAlpha(surface_alpha);
+  c.surface_raised = c.surface_raised.WithAlpha(surface_alpha);
+  return t;
+}
+
 }  // namespace gloomy::ui

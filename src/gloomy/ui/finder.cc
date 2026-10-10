@@ -270,6 +270,7 @@ auto Finder(Context &ctx, std::string_view label,
   panel.layout.gap = 6;
   panel.layout.align = Align::kStretch;
   panel.style.fill = t.colors.surface_raised;
+  panel.style.material = t.MaterialOf(Surface::kMenu);
   panel.style.border = t.colors.border;
   panel.style.border_width = t.metrics.border_width;
   panel.style.radii = gfx::CornerRadii::All(t.metrics.radius + 4);

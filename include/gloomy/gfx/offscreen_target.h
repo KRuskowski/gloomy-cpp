@@ -9,6 +9,7 @@
 #include "gloomy/core/image.h"
 #include "gloomy/gfx/device_context.h"
 #include "gloomy/gfx/draw_list.h"
+#include "gloomy/gfx/scene_renderer.h"
 
 namespace gloomy::gfx {
 
@@ -24,9 +25,14 @@ class OffscreenTarget {
 
   OffscreenTarget(DeviceContext &ctx, VkExtent2D extent);
 
+  /// Transitions the image for a host scene to draw into before the UI
+  /// (SceneRenderer); Begin() must then load it.
+  auto BeginScene(VkCommandBuffer cmd) -> ColorTarget;
+
   /// Transitions the image and begins dynamic rendering, cleared to
-  /// `clear`.
-  void Begin(VkCommandBuffer cmd, const Color &clear);
+  /// `clear`; with `load` (after BeginScene()) it keeps what the scene
+  /// drew instead.
+  void Begin(VkCommandBuffer cmd, const Color &clear, bool load = false);
 
   /// Ends rendering and, with `readback`, records the copy into the
   /// readback buffer.
@@ -48,6 +54,15 @@ class OffscreenTarget {
 auto RenderToImage(DeviceContext &ctx, UiRenderer &renderer,
                    OffscreenTarget &target,
                    std::span<const DrawList *const> lists, const Color &clear)
+    -> Image;
+
+/// Renders `scene` into `target`, blurs its backdrop with `blur` at
+/// `blur_levels` for glass, draws `lists` over it and waits for the
+/// result. For screenshots of a host scene under the UI.
+auto RenderSceneToImage(DeviceContext &ctx, UiRenderer &renderer,
+                        BackdropBlur &blur, SceneRenderer &scene,
+                        OffscreenTarget &target,
+                        std::span<const DrawList *const> lists, int blur_levels)
     -> Image;
 
 }  // namespace gloomy::gfx

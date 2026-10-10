@@ -52,6 +52,7 @@ UiRenderer::~UiRenderer() {
   vkDestroyPipelineLayout(device, pipeline_layout_, nullptr);
   vkDestroyDescriptorPool(device, descriptor_pool_, nullptr);
   vkDestroyDescriptorSetLayout(device, set_layout_, nullptr);
+  vkDestroyDescriptorSetLayout(device, backdrop_layout_, nullptr);
   vkDestroySampler(device, sampler_, nullptr);
 }
 
@@ -94,6 +95,40 @@ void UiRenderer::CreateAtlasTexture() {
                  VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
   });
 
+  placeholder_ = ctx_.CreateImage(
+      {1, 1},
+      1,
+      VK_FORMAT_R8G8B8A8_UNORM,
+      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+  ctx_.SubmitAndWait([&](VkCommandBuffer cmd) {
+    ImageBarrier(cmd,
+                 placeholder_.handle(),
+                 1,
+                 VK_IMAGE_LAYOUT_UNDEFINED,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 VK_PIPELINE_STAGE_2_NONE,
+                 VK_ACCESS_2_NONE,
+                 VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                 VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    const VkClearColorValue zero{};
+    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(cmd,
+                         placeholder_.handle(),
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                         &zero,
+                         1,
+                         &range);
+    ImageBarrier(cmd,
+                 placeholder_.handle(),
+                 1,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                 VK_PIPELINE_STAGE_2_CLEAR_BIT,
+                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+  });
+
   VkSamplerCreateInfo sampler{};
   sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   sampler.magFilter = VK_FILTER_LINEAR;
@@ -123,10 +158,16 @@ void UiRenderer::CreatePipeline(VkFormat color_format) {
   CheckVk(vkCreateDescriptorSetLayout(device, &set_info, nullptr, &set_layout_),
           "vkCreateDescriptorSetLayout");
 
-  VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1};
+  CheckVk(vkCreateDescriptorSetLayout(
+              device, &set_info, nullptr, &backdrop_layout_),
+          "vkCreateDescriptorSetLayout");
+
+  const auto sets = static_cast<std::uint32_t>(1 + frames_.size());
+  VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                                 sets};
   VkDescriptorPoolCreateInfo pool_info{};
   pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  pool_info.maxSets = 1;
+  pool_info.maxSets = sets;
   pool_info.poolSizeCount = 1;
   pool_info.pPoolSizes = &pool_size;
   CheckVk(
@@ -154,12 +195,26 @@ void UiRenderer::CreatePipeline(VkFormat color_format) {
   write.pImageInfo = &image_info;
   vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
 
-  // Layout: the descriptor set plus the viewport size.
-  VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 2};
+  // One backdrop set per frame slot, pointing at the placeholder until a
+  // host scene is set.
+  for (FrameData &frame : frames_) {
+    alloc.pSetLayouts = &backdrop_layout_;
+    CheckVk(vkAllocateDescriptorSets(device, &alloc, &frame.backdrop_set),
+            "vkAllocateDescriptorSets");
+    WriteBackdrop(frame, placeholder_.view());
+  }
+
+  // Layout: the atlas and backdrop sets plus viewport size and backdrop
+  // flag (ui.vert, ui.frag).
+  VkPushConstantRange push{
+      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+      0,
+      sizeof(float) * 4};
+  const VkDescriptorSetLayout set_layouts[] = {set_layout_, backdrop_layout_};
   VkPipelineLayoutCreateInfo layout_info{};
   layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  layout_info.setLayoutCount = 1;
-  layout_info.pSetLayouts = &set_layout_;
+  layout_info.setLayoutCount = 2;
+  layout_info.pSetLayouts = set_layouts;
   layout_info.pushConstantRangeCount = 1;
   layout_info.pPushConstantRanges = &push;
   CheckVk(
@@ -336,6 +391,31 @@ void UiRenderer::UploadAtlas(VkCommandBuffer cmd, FrameData &frame) {
                VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
 }
 
+void UiRenderer::WriteBackdrop(FrameData &frame, VkImageView view) {
+  VkDescriptorImageInfo image_info{};
+  image_info.sampler = sampler_;
+  image_info.imageView = view;
+  image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  VkWriteDescriptorSet write{};
+  write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  write.dstSet = frame.backdrop_set;
+  write.dstBinding = 0;
+  write.descriptorCount = 1;
+  write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  write.pImageInfo = &image_info;
+  vkUpdateDescriptorSets(ctx_.device(), 1, &write, 0, nullptr);
+  frame.backdrop = view;
+}
+
+void UiRenderer::SetBackdrop(std::uint32_t slot, VkImageView view) {
+  FrameData &frame = frames_[slot];
+  frame.has_backdrop = view != VK_NULL_HANDLE;
+  const VkImageView bound = frame.has_backdrop ? view : placeholder_.view();
+  if (bound != frame.backdrop) {
+    WriteBackdrop(frame, bound);
+  }
+}
+
 void UiRenderer::Prepare(VkCommandBuffer cmd, std::uint32_t slot,
                          std::span<const DrawList *const> lists) {
   FrameData &frame = frames_[slot];
@@ -375,6 +455,14 @@ void UiRenderer::Draw(VkCommandBuffer cmd, std::uint32_t slot,
                           &descriptor_set_,
                           0,
                           nullptr);
+  vkCmdBindDescriptorSets(cmd,
+                          VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          pipeline_layout_,
+                          1,
+                          1,
+                          &frame.backdrop_set,
+                          0,
+                          nullptr);
   const VkViewport viewport{0.0F,
                             0.0F,
                             static_cast<float>(extent.width),
@@ -384,10 +472,16 @@ void UiRenderer::Draw(VkCommandBuffer cmd, std::uint32_t slot,
   vkCmdSetViewport(cmd, 0, 1, &viewport);
   const VkRect2D scissor{{0, 0}, extent};
   vkCmdSetScissor(cmd, 0, 1, &scissor);
-  const float size[2] = {static_cast<float>(extent.width),
-                         static_cast<float>(extent.height)};
-  vkCmdPushConstants(
-      cmd, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(size), size);
+  const float push[4] = {static_cast<float>(extent.width),
+                         static_cast<float>(extent.height),
+                         frame.has_backdrop ? 1.0F : 0.0F,
+                         0.0F};
+  vkCmdPushConstants(cmd,
+                     pipeline_layout_,
+                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                     0,
+                     sizeof(push),
+                     push);
   const VkBuffer buffer = frame.instances.handle();
   const VkDeviceSize offset = 0;
   vkCmdBindVertexBuffers(cmd, 0, 1, &buffer, &offset);

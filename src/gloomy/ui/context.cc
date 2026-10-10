@@ -449,7 +449,11 @@ void Context::PaintNode(int index, gfx::DrawList &list) {
   if (s.shadow.a > 0.0F && s.shadow_blur > 0.0F) {
     list.Shadow(r, s.shadow, s.shadow_blur, s.shadow_offset, s.radii);
   }
-  if (s.fill.a > 0.0F || s.fill_bottom.a > 0.0F) {
+  if (s.material == Material::kGlass) {
+    const GlassStyle &g = theme_.glass;
+    list.FillGlass(
+        r, g.Look(), g.fallback.a > 0.0F ? g.fallback : s.fill, s.radii);
+  } else if (s.fill.a > 0.0F || s.fill_bottom.a > 0.0F) {
     if (s.fill_bottom.a > 0.0F) {
       list.FillRectGradient(r, s.fill, s.fill_bottom, s.radii);
     } else {
@@ -643,6 +647,7 @@ void Context::BeginLayer(LayerKind kind, Id id, const Rect &anchor) {
       root.layout.padding = Padding::All(kind == LayerKind::kPopup ? 4 : 6);
       root.layout.align = Align::kStretch;
       root.style.fill = c.surface_raised;
+      root.style.material = theme_.MaterialOf(Surface::kMenu);
       root.style.border = c.border;
       root.style.border_width = theme_.metrics.border_width;
       root.style.radii = gfx::CornerRadii::All(theme_.metrics.radius);

@@ -199,9 +199,8 @@ auto Swapchain::BeginFrame(VkExtent2D extent) -> std::optional<Frame> {
   return Frame{slot.cmd, slot_, extent_};
 }
 
-void Swapchain::BeginRendering(const Color &clear) {
-  VkCommandBuffer cmd = slots_[slot_].cmd;
-  ImageBarrier(cmd,
+auto Swapchain::BeginScene() -> ColorTarget {
+  ImageBarrier(slots_[slot_].cmd,
                images_[image_index_],
                1,
                VK_IMAGE_LAYOUT_UNDEFINED,
@@ -210,11 +209,32 @@ void Swapchain::BeginRendering(const Color &clear) {
                VK_ACCESS_2_NONE,
                VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+  return {images_[image_index_], views_[image_index_], format_, extent_};
+}
+
+void Swapchain::BeginRendering(const Color &clear, bool load) {
+  VkCommandBuffer cmd = slots_[slot_].cmd;
+  if (load) {
+    // The scene's writes before the UI's.
+    ImageBarrier(cmd,
+                 images_[image_index_],
+                 1,
+                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                 VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+                 VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                 VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+  } else {
+    BeginScene();
+  }
   VkRenderingAttachmentInfo color{};
   color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   color.imageView = views_[image_index_];
   color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-  color.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  color.loadOp =
+      load ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
   color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
   color.clearValue.color = {{clear.r, clear.g, clear.b, 1.0F}};
   VkRenderingInfo info{};

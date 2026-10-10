@@ -5,9 +5,12 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "gloomy/gfx/device_context.h"
+#include "gloomy/gfx/scene_renderer.h"
 #include "gloomy/text/font_set.h"
 #include "gloomy/ui/context.h"
 #include "gloomy/ui/input.h"
@@ -57,6 +60,12 @@ struct ShellOptions {
   /// Windowed only: after this many frames the shell posts a quit event, as
   /// closing the window does (tests of the exit path); negative: never.
   std::int64_t quit_after_frames = -1;
+  /// A host scene drawn under the UI (3D games), created once the device
+  /// exists with the colour format and frame slots it renders with; empty
+  /// for none. Glass surfaces (Theme::glass) show it blurred.
+  std::function<std::unique_ptr<gfx::SceneRenderer>(
+      gfx::DeviceContext &, VkFormat, std::uint32_t frames_in_flight)>
+      scene;
   /// Declares the UI for one frame.
   std::function<void(ui::Context &, const FrameInfo &)> frame;
 };
