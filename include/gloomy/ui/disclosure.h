@@ -109,6 +109,23 @@ struct Segment {
 auto SegmentedControl(Context &ctx, std::string_view label, int &selected,
                       std::span<const Segment> segments) -> bool;
 
+/// Width one segment takes in a SegmentedControl, without the gaps.
+/// @param[in] ctx the context whose theme and text measure it
+/// @param[in] segment the segment
+/// @param[in] selected drawn selected (its text is bold)
+/// @return its width in pixels
+[[nodiscard]] auto SegmentWidth(Context &ctx, const Segment &segment,
+                                bool selected) -> float;
+
+/// Width a SegmentedControl over `segments` takes, frame included.
+/// @param[in] ctx the context whose theme and text measure it
+/// @param[in] segments the segments
+/// @param[in] selected index of the selected one, or -1
+/// @return its width in pixels
+[[nodiscard]] auto SegmentedControlWidth(Context &ctx,
+                                         std::span<const Segment> segments,
+                                         int selected) -> float;
+
 /// The tab last chosen in each group of tab bars (say, per kind of item a
 /// detail pane shows), remembered by tab name: a group whose tabs vary
 /// keeps its choice while the tab exists and falls back to the first tab

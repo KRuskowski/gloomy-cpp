@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
+#include <optional>
 
 #include "gloomy/ui/disclosure.h"
 #include "gloomy/ui/overlays.h"
@@ -399,33 +401,98 @@ auto PresetBar(Context &ctx, std::string_view label,
   return result;
 }
 
+auto FitSegments(std::span<const float> widths, const std::vector<bool> &keep,
+                 float frame, float gap, float available) -> std::vector<bool> {
+  const std::size_t n = widths.size();
+  std::vector<bool> shown(n, true);
+  const auto kept = [&](std::size_t i) {
+    return i < keep.size() && keep[i];
+  };
+  const auto total = [&] {
+    float w = frame;
+    int count = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+      if (shown[i]) {
+        w += widths[i];
+        ++count;
+      }
+    }
+    return w + gap * static_cast<float>(std::max(0, count - 1));
+  };
+  for (std::size_t k = n; k > 0 && total() > available; --k) {
+    if (!kept(k - 1)) {
+      shown[k - 1] = false;
+    }
+  }
+  return shown;
+}
+
+namespace {
+
+/// The width of the segment row last frame.
+struct PresetSegmentsState {
+  float width = 0.0F;
+};
+
+}  // namespace
+
 auto PresetSegments(Context &ctx, std::string_view label,
                     std::span<const ViewPreset> presets, int &active,
                     const PresetSegmentsOptions &opt) -> PresetBarResult {
   PresetBarResult result;
+  const Theme &t = ctx.theme();
   const int n = static_cast<int>(presets.size());
   const auto count_of = [&](int i) {
     return i < static_cast<int>(opt.counts.size())
                ? opt.counts[static_cast<std::size_t>(i)]
                : -1;
   };
-  // Which presets are segments: the chosen one always, then those with
+  // Which presets may be segments: the chosen one always, then those with
   // rows (or every one, without counts), in order, up to the limit.
-  std::vector<int> shown;
-  std::vector<int> hidden;
+  std::vector<int> candidates;
+  std::vector<int> empty;
   int room = std::max(1, opt.max_segments) - (active >= 0 ? 1 : 0);
   for (int i = 0; i < n; ++i) {
     const bool chosen = i == active;
     const bool worth = !opt.hide_empty || count_of(i) != 0;
     if (chosen || (worth && room > 0)) {
-      shown.push_back(i);
+      candidates.push_back(i);
       room -= chosen ? 0 : 1;
     } else {
-      hidden.push_back(i);
+      empty.push_back(i);
     }
   }
-  std::vector<std::string> names;
-  names.reserve(shown.size() + 1);
+  // Then those that fit the width the row had last frame.
+  const Id id = ctx.GetId(label);
+  auto &state = ctx.State<PresetSegmentsState>(id);
+  if (const std::optional<Rect> last = ctx.LastRect(id)) {
+    state.width = last->Width();
+  }
+  const float available = state.width > 0.0F ? state.width : ctx.viewport().x;
+  constexpr float kRowGap = 8.0F;
+  const float views_width = std::ceil(ctx.text().Measure(
+                                "Views", t.fonts.sans, t.metrics.font_size)) +
+                            t.metrics.padding_x * 2.0F + 27.0F;
+  std::vector<float> widths;
+  std::vector<bool> keep;
+  for (const int i : candidates) {
+    const ViewPreset &p = presets[static_cast<std::size_t>(i)];
+    widths.push_back(
+        SegmentWidth(ctx, Segment{p.name, count_of(i), {}}, i == active));
+    keep.push_back(i == active);
+  }
+  if (active < 0) {
+    widths.push_back(SegmentWidth(ctx, Segment{"Your view", -1, {}}, true));
+    keep.push_back(true);
+  }
+  const float frame = SegmentedControlWidth(ctx, {}, -1);
+  const std::vector<bool> fits =
+      FitSegments(widths, keep, frame, 2.0F, available - views_width - kRowGap - 2.0F);
+  std::vector<int> shown;
+  std::vector<int> crowded;
+  for (std::size_t k = 0; k < candidates.size(); ++k) {
+    (fits[k] ? shown : crowded).push_back(candidates[k]);
+  }
   std::vector<Segment> segments;
   for (const int i : shown) {
     const ViewPreset &p = presets[static_cast<std::size_t>(i)];
@@ -441,10 +508,14 @@ auto PresetSegments(Context &ctx, std::string_view label,
     segments.push_back({"Your view", -1, "Changed from the saved views"});
     selected = static_cast<int>(segments.size()) - 1;
   }
-  LayoutSpec row;
-  row.gap = 8;
-  row.align = Align::kCenter;
-  BeginRow(ctx, row);
+  NodeDesc row;
+  row.id = id;
+  row.layout.mode = LayoutMode::kRow;
+  row.layout.width = SizeSpec::Grow();
+  row.layout.gap = kRowGap;
+  row.layout.align = Align::kCenter;
+  row.flags = kNodeClip;
+  ctx.Open(row);
   ctx.PushId(label);
   const int before = selected;
   if (SegmentedControl(ctx, "##segments", selected, segments) &&
@@ -453,21 +524,27 @@ auto PresetSegments(Context &ctx, std::string_view label,
     active = shown[static_cast<std::size_t>(selected)];
     result.changed = true;
   }
-  if (BeginMenuButton(ctx, "Views##more", ButtonKind::kFlat)) {
-    if (!hidden.empty()) {
-      MenuHeading(ctx, opt.hide_empty ? "Nothing in them now" : "More views");
-      for (const int i : hidden) {
-        const ViewPreset &p = presets[static_cast<std::size_t>(i)];
-        const int c = count_of(i);
-        const std::string text =
-            c >= 0 ? p.name + " (" + std::to_string(c) + ")" : p.name;
-        if (MenuItem(ctx, MenuItemSpec{text, {}, p.description, true})) {
-          active = i;
-          result.changed = true;
-        }
-      }
-      MenuSeparator(ctx);
+  const auto menu_views = [&](std::span<const int> views,
+                              std::string_view heading) {
+    if (views.empty()) {
+      return;
     }
+    MenuHeading(ctx, heading);
+    for (const int i : views) {
+      const ViewPreset &p = presets[static_cast<std::size_t>(i)];
+      const int c = count_of(i);
+      const std::string text =
+          c >= 0 ? p.name + " (" + std::to_string(c) + ")" : p.name;
+      if (MenuItem(ctx, MenuItemSpec{text, {}, p.description, true})) {
+        active = i;
+        result.changed = true;
+      }
+    }
+    MenuSeparator(ctx);
+  };
+  if (BeginMenuButton(ctx, "Views##more", ButtonKind::kFlat)) {
+    menu_views(crowded, "More views");
+    menu_views(empty, opt.hide_empty ? "Nothing in them now" : "More views");
     if (MenuItem(ctx,
                  MenuItemSpec{"Save view", {}, "Keep this filter and sort"})) {
       result.save = true;
@@ -479,7 +556,7 @@ auto PresetSegments(Context &ctx, std::string_view label,
     EndMenuButton(ctx);
   }
   ctx.PopId();
-  End(ctx);
+  ctx.Close();
   return result;
 }
 

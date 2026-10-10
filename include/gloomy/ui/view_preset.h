@@ -69,10 +69,21 @@ struct PresetSegmentsOptions {
   int max_segments = 8;
 };
 
+/// Which segments of widths `widths` fit into `available` pixels, with
+/// `frame` taken once and `gap` between two shown segments: those marked
+/// in `keep` always stay; the others leave last first until the rest fit.
+/// @return per segment whether it is shown
+[[nodiscard]] auto FitSegments(std::span<const float> widths,
+                               const std::vector<bool> &keep, float frame,
+                               float gap, float available) -> std::vector<bool>;
+
 /// The presets as a segmented control with their row counts: the chosen
 /// one and those with rows first, the rest, Save and Share in a "Views"
 /// menu at the end. While the view is modified away from every preset
-/// (`active` -1) a "Your view" segment shows selected.
+/// (`active` -1) a "Your view" segment shows selected. The control grows
+/// to the width its parent gives it and never cuts a name: views that do
+/// not fit at last frame's width move into the menu, last first, under
+/// "More views"; the chosen one always stays.
 auto PresetSegments(Context &ctx, std::string_view label,
                     std::span<const ViewPreset> presets, int &active,
                     const PresetSegmentsOptions &opt = {}) -> PresetBarResult;

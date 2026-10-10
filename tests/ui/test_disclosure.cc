@@ -394,5 +394,80 @@ TEST(DisclosureTest, PresetSegmentsSaveAndShareFromTheMenu) {
   EXPECT_TRUE(result.share);
 }
 
+TEST(DisclosureTest, FitSegmentsDropsTheLastFirstAndKeepsTheChosen) {
+  const std::vector<float> widths = {100, 100, 100, 100};
+  const std::vector<bool> keep = {false, false, false, true};
+  // Everything fits: 10 + 400 + 3 gaps of 2.
+  EXPECT_EQ(FitSegments(widths, keep, 10, 2, 416),
+            (std::vector<bool>{true, true, true, true}));
+  // One must go: the last that may, the third.
+  EXPECT_EQ(FitSegments(widths, keep, 10, 2, 400),
+            (std::vector<bool>{true, true, false, true}));
+  // Too narrow for even one: the kept one stays.
+  EXPECT_EQ(FitSegments(widths, keep, 10, 2, 50),
+            (std::vector<bool>{false, false, false, true}));
+}
+
+TEST(DisclosureTest, PresetSegmentsNeverCutANameAndCrowdIntoTheMenu) {
+  UiHarness h({560, 400});
+  std::vector<ViewPreset> presets(6);
+  presets[0].name = "Starter jobs";
+  presets[1].name = "Worth it";
+  presets[2].name = "Freight for my ship";
+  presets[3].name = "Tenders I can bid";
+  presets[4].name = "My contracts";
+  presets[5].name = "All";
+  const std::vector<int> counts = {3, 3, 4, 10, 1, 11};
+  int active = 0;
+  PresetBarResult result;
+  auto ui = [&](Context &ctx) {
+    PresetSegmentsOptions opt;
+    opt.counts = counts;
+    result = PresetSegments(ctx, "##views", presets, active, opt);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.ctx().PushId("##views");
+  const Id segs = h.ctx().GetId("##segments");
+  const Id more = h.ctx().GetId("Views##more");
+  h.ctx().PushId(segs);
+  std::vector<Id> seg;
+  for (std::uint64_t i = 0; i < 6; ++i) {
+    seg.push_back(h.ctx().GetId(i));
+  }
+  h.ctx().PopId();
+  h.ctx().PopId();
+  const Id row = h.ctx().GetId("##views");
+  ASSERT_TRUE(h.ctx().LastRect(row).has_value());
+  ASSERT_TRUE(h.ctx().LastRect(more).has_value());
+  EXPECT_LE(h.ctx().LastRect(more)->x1, h.ctx().LastRect(row)->x1)
+      << "the menu button stays inside the row";
+  // Each shown segment is as wide as its name and count need.
+  int shown = 0;
+  for (std::size_t i = 0; i < seg.size(); ++i) {
+    if (const std::optional<Rect> r = h.ctx().LastRect(seg[i])) {
+      ++shown;
+      const ViewPreset &p = presets[i];
+      EXPECT_GE(r->Width() + 0.5F,
+                SegmentWidth(h.ctx(), Segment{p.name, counts[i], {}}, i == 0))
+          << p.name << " is cut";
+    }
+  }
+  EXPECT_GE(shown, 1);
+  EXPECT_LT(shown, 6) << "560 px cannot hold six views";
+  EXPECT_TRUE(h.ctx().LastRect(seg[0]).has_value()) << "the chosen stays";
+  // The crowded views are in the menu, the first of them on top.
+  h.Frame(ui, UiHarness::Click(h.Center(more)));
+  h.Frame(ui);
+  h.Frame(ui, UiHarness::Key(Key::kEnter));
+  EXPECT_TRUE(result.changed);
+  EXPECT_EQ(active, shown) << "the first view that did not fit";
+  h.Frame(ui);
+  h.Frame(ui);
+  EXPECT_TRUE(
+      h.ctx().LastRect(seg[0]).has_value() ||
+      h.ctx().LastRect(seg[static_cast<std::size_t>(shown)]).has_value());
+}
+
 }  // namespace
 }  // namespace gloomy::ui

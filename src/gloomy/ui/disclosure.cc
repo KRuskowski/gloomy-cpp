@@ -253,6 +253,42 @@ auto EmptyState(Context &ctx, std::string_view label,
   return taken;
 }
 
+namespace {
+
+// SegmentedControl's frame and spacing.
+constexpr float kSegmentBarPadding = 2.0F;
+constexpr float kSegmentGap = 2.0F;
+constexpr float kSegmentCountGap = 5.0F;
+
+}  // namespace
+
+auto SegmentWidth(Context &ctx, const Segment &segment, bool selected)
+    -> float {
+  const Theme &t = ctx.theme();
+  float w = ctx.text().Measure(segment.text,
+                               selected ? t.fonts.bold : t.fonts.sans,
+                               t.metrics.font_size);
+  if (segment.count >= 0) {
+    w += kSegmentCountGap + ctx.text().Measure(std::to_string(segment.count),
+                                               t.fonts.sans,
+                                               t.metrics.small_font_size);
+  }
+  return w + (t.metrics.padding_x + 2.0F) * 2.0F;
+}
+
+auto SegmentedControlWidth(Context &ctx, std::span<const Segment> segments,
+                           int selected) -> float {
+  const Theme &t = ctx.theme();
+  float w = (kSegmentBarPadding + t.metrics.border_width) * 2.0F;
+  for (std::size_t i = 0; i < segments.size(); ++i) {
+    w += SegmentWidth(ctx, segments[i], static_cast<int>(i) == selected);
+  }
+  if (segments.size() > 1) {
+    w += kSegmentGap * static_cast<float>(segments.size() - 1);
+  }
+  return w;
+}
+
 auto SegmentedControl(Context &ctx, std::string_view label, int &selected,
                       std::span<const Segment> segments) -> bool {
   const Theme &t = ctx.theme();
@@ -272,8 +308,8 @@ auto SegmentedControl(Context &ctx, std::string_view label, int &selected,
   bar.id = id;
   bar.layout.mode = LayoutMode::kRow;
   bar.layout.height = SizeSpec::Fixed(t.metrics.control_height);
-  bar.layout.padding = Padding::All(2);
-  bar.layout.gap = 2;
+  bar.layout.padding = Padding::All(kSegmentBarPadding);
+  bar.layout.gap = kSegmentGap;
   bar.layout.align = Align::kStretch;
   bar.style.fill = t.colors.surface_alt;
   bar.style.border = t.colors.border;
@@ -296,7 +332,7 @@ auto SegmentedControl(Context &ctx, std::string_view label, int &selected,
     cell.id = seg_id;
     cell.layout.mode = LayoutMode::kRow;
     cell.layout.padding = Padding::Xy(t.metrics.padding_x + 2, 0);
-    cell.layout.gap = 5;
+    cell.layout.gap = kSegmentCountGap;
     cell.layout.align = Align::kCenter;
     cell.style.radii = gfx::CornerRadii::All(t.metrics.radius);
     if (on) {
