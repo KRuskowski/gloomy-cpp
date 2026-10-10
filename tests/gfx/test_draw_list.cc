@@ -33,6 +33,32 @@ TEST(DrawListTest, HexagonsRecordTheirCircumcircleAndOrientation) {
   EXPECT_EQ(list.instances().size(), 2U) << "no size, nothing drawn";
 }
 
+TEST(DrawListTest, AlphaStackFadesWhatIsDrawnInside) {
+  DrawList list;
+  const auto alpha_of = [&](std::size_t i) {
+    return list.instances()[i].color >> 24U;
+  };
+  list.FillRect(Rect::FromXywh(0, 0, 4, 4), Color::Rgb(0xFFFFFF));
+  list.PushAlpha(0.5F);
+  list.FillCircle({8, 8}, 4, Color::Rgb(0xFFFFFF));
+  list.PushAlpha(0.5F);
+  list.Line({0, 0}, {8, 8}, 1, Color::Rgba(0xFFFFFF80));
+  list.PopAlpha();
+  list.FillHexagon({8, 8}, 4, Color::Rgb(0xFFFFFF));
+  list.PopAlpha();
+  list.PopAlpha();
+  list.FillRect(Rect::FromXywh(0, 0, 4, 4), Color::Rgb(0xFFFFFF));
+  ASSERT_EQ(list.instances().size(), 5U);
+  EXPECT_EQ(alpha_of(0), 255U);
+  EXPECT_NEAR(static_cast<double>(alpha_of(1)), 128.0, 1.0);
+  EXPECT_NEAR(static_cast<double>(alpha_of(2)), 32.0, 1.0) << "nested";
+  EXPECT_NEAR(static_cast<double>(alpha_of(3)), 128.0, 1.0);
+  EXPECT_EQ(alpha_of(4), 255U) << "popped past the bottom: still 1";
+  list.PushAlpha(0.25F);
+  list.Clear();
+  EXPECT_FLOAT_EQ(list.alpha(), 1.0F);
+}
+
 TEST(DrawListTest, ClipStackIntersects) {
   DrawList list;
   list.PushClip(Rect{0, 0, 100, 100});

@@ -141,6 +141,17 @@ class DrawList {
   /// The current clip rectangle.
   auto clip() const -> const Rect & { return clip_stack_.back(); }
 
+  /// Multiplies the alpha of everything drawn until PopAlpha() by `alpha`
+  /// (nested pushes multiply): fades a group of shapes in or out, e.g. one
+  /// map's detail into another's. Each shape fades on its own, so where
+  /// shapes overlap the result is not quite fading the group as one image.
+  void PushAlpha(float alpha);
+
+  void PopAlpha();
+
+  /// The alpha multiplier in effect (1 outside PushAlpha()).
+  auto alpha() const -> float { return alpha_stack_.back(); }
+
   auto instances() const -> const std::vector<Instance> & { return instances_; }
 
   /// True if nothing inside `r` can be visible under the current clip.
@@ -153,6 +164,10 @@ class DrawList {
 
   std::vector<Instance> instances_;
   std::vector<Rect> clip_stack_{kUnclipped};
+  std::vector<float> alpha_stack_{1.0F};
+
+  /// `c` packed with the alpha multiplier applied.
+  auto Packed(const Color &c) const -> std::uint32_t;
 
   static constexpr Rect kUnclipped{-1.0e9F, -1.0e9F, 1.0e9F, 1.0e9F};
 };

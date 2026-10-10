@@ -1,5 +1,6 @@
 #include "gloomy/gfx/draw_list.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace gloomy::gfx {
@@ -18,6 +19,22 @@ void SetRadii(Instance &inst, const CornerRadii &radii) {
 void DrawList::Clear() {
   instances_.clear();
   clip_stack_.assign(1, kUnclipped);
+  alpha_stack_.assign(1, 1.0F);
+}
+
+void DrawList::PushAlpha(float alpha) {
+  alpha_stack_.push_back(alpha_stack_.back() * std::clamp(alpha, 0.0F, 1.0F));
+}
+
+void DrawList::PopAlpha() {
+  if (alpha_stack_.size() > 1) {
+    alpha_stack_.pop_back();
+  }
+}
+
+auto DrawList::Packed(const Color &c) const -> std::uint32_t {
+  const float a = alpha_stack_.back();
+  return a >= 1.0F ? c.Pack() : c.WithAlpha(c.a * a).Pack();
 }
 
 auto DrawList::Push(PrimitiveKind kind, const Rect &bounds) -> Instance & {
@@ -47,8 +64,8 @@ void DrawList::FillRectGradient(const Rect &r, const Color &top,
     return;
   }
   Instance &inst = Push(PrimitiveKind::kRect, r);
-  inst.color = top.Pack();
-  inst.color2 = bottom.Pack();
+  inst.color = Packed(top);
+  inst.color2 = Packed(bottom);
   SetRadii(inst, radii);
 }
 
@@ -58,8 +75,8 @@ void DrawList::FillGlass(const Rect &r, const GlassLook &look,
     return;
   }
   Instance &inst = Push(PrimitiveKind::kGlass, r);
-  inst.color = look.tint.Pack();
-  inst.color2 = fallback.Pack();
+  inst.color = Packed(look.tint);
+  inst.color2 = Packed(fallback);
   // The look rides in the otherwise unused atlas coordinates.
   inst.uv[0] = look.darken;
   inst.uv[1] = look.noise;
@@ -74,7 +91,7 @@ void DrawList::StrokeRect(const Rect &r, const Color &c, float width,
     return;
   }
   Instance &inst = Push(PrimitiveKind::kRect, r);
-  inst.color = c.Pack();
+  inst.color = Packed(c);
   inst.color2 = inst.color;
   inst.stroke = width;
   SetRadii(inst, radii);
@@ -87,7 +104,7 @@ void DrawList::Shadow(const Rect &r, const Color &c, float blur, Vec2 offset,
     return;
   }
   Instance &inst = Push(PrimitiveKind::kRect, box);
-  inst.color = c.Pack();
+  inst.color = Packed(c);
   inst.color2 = inst.color;
   inst.soft = blur;
   SetRadii(inst, radii);
@@ -107,7 +124,7 @@ void DrawList::StrokeCircle(Vec2 center, float radius, const Color &c,
     return;
   }
   Instance &inst = Push(PrimitiveKind::kCircle, r);
-  inst.color = c.Pack();
+  inst.color = Packed(c);
   inst.color2 = inst.color;
   inst.stroke = width;
 }
@@ -127,7 +144,7 @@ void DrawList::StrokeHexagon(Vec2 center, float radius, const Color &c,
     return;
   }
   Instance &inst = Push(PrimitiveKind::kHexagon, r);
-  inst.color = c.Pack();
+  inst.color = Packed(c);
   inst.color2 = inst.color;
   inst.stroke = width;
   inst.radii[0] = pointy ? 1.0F : 0.0F;
@@ -142,7 +159,7 @@ void DrawList::Line(Vec2 a, Vec2 b, float width, const Color &c) {
     return;
   }
   Instance &inst = Push(PrimitiveKind::kLine, Rect{a.x, a.y, b.x, b.y});
-  inst.color = c.Pack();
+  inst.color = Packed(c);
   inst.color2 = inst.color;
   inst.radii[0] = width;
 }
@@ -156,7 +173,7 @@ void DrawList::Glyph(const Rect &r, const Rect &uv, int page, const Color &c) {
   inst.uv[1] = uv.y0;
   inst.uv[2] = uv.x1;
   inst.uv[3] = uv.y1;
-  inst.color = c.Pack();
+  inst.color = Packed(c);
   inst.color2 = inst.color;
   inst.kind |= static_cast<std::uint32_t>(page) << 8U;
 }
