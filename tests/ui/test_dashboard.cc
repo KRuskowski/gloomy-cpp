@@ -30,6 +30,8 @@ struct Hub {
       {"Freighter 3", "Idle 3 h", Tone::kWarning, {}},
   };
   std::vector<TileResult> results = std::vector<TileResult>(4);
+  /// Null: the theme's cards.
+  const PanelSkin *skin = nullptr;
 
   void Draw(Context &ctx) {
     BeginTileGrid(ctx, "##hub", 300);
@@ -42,6 +44,7 @@ struct Hub {
       spec.lines = ships;
       spec.max_lines = 2;
       spec.action = "Fleet (O)";
+      spec.skin = skin;
       results[static_cast<std::size_t>(i)] =
           DashboardTile(ctx, "##tile" + std::to_string(i), spec);
     }
@@ -133,6 +136,36 @@ TEST(DashboardTest, MoreLineButtonAndEnterAct) {
   EXPECT_TRUE(hub.results[3].action);
   h.Frame(ui, UiHarness::Key(Key::kEnter));
   EXPECT_TRUE(hub.results[3].action) << "focused by the click";
+}
+
+TEST(DashboardTest, SkinnedTileKeepsItsContentInsideTheFrameAndActs) {
+  PanelSkin skin;
+  skin.frame = 6.0F;
+  for (const PanelSkin *s : {static_cast<const PanelSkin *>(nullptr),
+                             static_cast<const PanelSkin *>(&skin)}) {
+    UiHarness h({1000, 700});
+    Hub hub;
+    hub.skin = s;
+    auto ui = [&](Context &ctx) {
+      hub.Draw(ctx);
+    };
+    h.Frame(ui);
+    Id line = kNoId;
+    h.Frame([&](Context &ctx) {
+      ui(ctx);
+      ctx.PushId(ctx.GetId("##tile2"));
+      line = ctx.GetId("##line1");
+      ctx.PopId();
+    });
+    Context &c = h.ctx();
+    const Rect tile = c.LastRect(c.GetId("##tile2")).value();
+    const Rect row = c.LastRect(line).value();
+    const float frame = s != nullptr ? s->frame : 0.0F;
+    EXPECT_GE(row.x0 - tile.x0, 12.0F + frame);
+    EXPECT_GE(tile.x1 - row.x1, 12.0F + frame - 0.5F);
+    h.Frame(ui, UiHarness::Click(h.Center(line)));
+    EXPECT_EQ(hub.results[2].line, 1);
+  }
 }
 
 TEST(DashboardTest, EmptyTileSaysWhy) {

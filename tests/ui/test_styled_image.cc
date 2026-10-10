@@ -1,13 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "gloomy/gfx/offscreen_target.h"
 #include "gloomy/gfx/ui_renderer.h"
 #include "gloomy/ui/cargo_hold.h"
+#include "gloomy/ui/dashboard.h"
 #include "gloomy/ui/paper.h"
 #include "gloomy/ui/schematic.h"
+#include "gloomy/ui/skin.h"
 #include "gloomy/ui/widgets.h"
 #include "test_support/gpu_test.h"
 #include "test_support/ui_harness.h"
@@ -326,6 +329,58 @@ TEST_F(StyledImageTest, ShipAndHold) {
   h.Frame(ui);
   h.Frame(ui);
   testing::ExpectMatchesReference(Render(h, {640, 460}), "styled_ship");
+}
+
+// Hub tiles in the theme's cards and in two HUD flavours.
+constexpr std::string_view kMilitarySkin =
+    "primary = #9CC870\nsecondary = #6E8C5A\nown = #9CC870\n"
+    "warning = #E8B040\nalert = #E85A3C\npanel_paper = #141A10\n"
+    "panel_text = #D8E0C8\npanel_text_muted = #8C9878\nline = 2\n"
+    "panel_bolt = 2.5\npanel_corner = 2\nscanlines = 0.05";
+constexpr std::string_view kRaiderSkin =
+    "primary = #FF5A3C\nsecondary = #A04A3A\nown = #FFB040\n"
+    "warning = #FFB040\nalert = #FF2E2E\npanel_paper = #1C0E0C\n"
+    "panel_text = #F0D8D0\npanel_text_muted = #A08078\nline = 1.5\n"
+    "panel_bolt = 0\npanel_corner = 0\nscanlines = 0.1";
+
+void SkinnedTiles(Context &ctx) {
+  static const PanelSkin kMilitary =
+      ParsePanelSkin(kMilitarySkin, PanelSkin::FromTheme(ctx.theme()));
+  static const PanelSkin kRaider =
+      ParsePanelSkin(kRaiderSkin, PanelSkin::FromTheme(ctx.theme()));
+  static const std::vector<TileLine> kLines = {
+      {"Courier 1", "+420 Cr/h", Tone::kGood, {}},
+      {"Freighter 2", "Under attack", Tone::kBad, {}},
+      {"Freighter 3", "docked", Tone::kNeutral, {}},
+  };
+  const PanelSkin *skins[] = {nullptr, &kMilitary, &kRaider};
+  const char *titles[] = {"Theme", "Military", "Raider"};
+  BeginTileGrid(ctx, "##tiles", 200.0F, 3, 12.0F);
+  for (int i = 0; i < 3; ++i) {
+    TileSpec spec;
+    spec.title = titles[i];
+    spec.aside = "3 ships";
+    spec.answer = {"+1,200 Cr/h", {}};
+    spec.status = i == 2 ? Tone::kBad : Tone::kNeutral;
+    spec.lines = kLines;
+    spec.action = "Fleet (O)";
+    spec.skin = skins[i];
+    (void)DashboardTile(ctx, "##tile" + std::to_string(i), spec);
+  }
+  EndTileGrid(ctx);
+}
+
+TEST_F(StyledImageTest, SkinnedTiles) {
+  testing::UiHarness h({720, 220});
+  auto ui = [](Context &ctx) {
+    BeginColumn(ctx, {.width = SizeSpec::Grow(), .padding = Padding::All(12)});
+    SkinnedTiles(ctx);
+    End(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  h.Frame(ui);
+  testing::ExpectMatchesReference(Render(h, {720, 220}), "styled_tiles");
 }
 
 }  // namespace

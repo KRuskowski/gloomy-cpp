@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 
+#include "gloomy/ui/hud.h"
 #include "gloomy/ui/widgets.h"
 #include "ui/widget_util.h"
 
@@ -32,7 +33,8 @@ auto Small(const Theme &t, std::string_view text, Color color,
 }
 
 /// One clickable item line. @return True when clicked.
-auto ItemLine(Context &ctx, int index, const TileLine &line) -> bool {
+auto ItemLine(Context &ctx, int index, const TileLine &line,
+              const PanelSkin *skin) -> bool {
   const Theme &t = ctx.theme();
   const Id id = ctx.GetId("##line" + std::to_string(index));
   const Interaction it = ctx.Interact(id);
@@ -48,15 +50,17 @@ auto ItemLine(Context &ctx, int index, const TileLine &line) -> bool {
   row.style.radii = gfx::CornerRadii::All(t.metrics.radius);
   row.flags = kNodeInteractive;
   ctx.Open(row);
-  const Color tinted = ToneColor(t, line.tone);
+  const Color tinted =
+      skin != nullptr ? skin->ToneInk(line.tone) : ToneColor(t, line.tone);
+  const Color plain = skin != nullptr ? skin->text : t.colors.text;
   LabelOptions text;
   text.width = SizeSpec::Grow();
-  text.color = line.tone == Tone::kNeutral ? t.colors.text : tinted;
+  text.color = line.tone == Tone::kNeutral ? plain : tinted;
   Label(ctx, line.text, text);
   if (!line.value.empty()) {
     // The number keeps its width: a long text yields, not the value.
     LabelOptions value;
-    value.color = tinted;
+    value.color = line.tone == Tone::kNeutral ? plain : tinted;
     value.bold = line.tone != Tone::kNeutral;
     value.width = SizeSpec::Fixed(
         std::ceil(ctx.text().Measure(line.value,
@@ -101,17 +105,50 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
   tile.style.border_width = t.metrics.border_width;
   tile.style.radii = gfx::CornerRadii::All(t.metrics.radius + 2);
   tile.flags = kNodeInteractive | kNodeFocusable | kNodeFocusRing;
+  const PanelSkin *skin = spec.skin;
+  if (skin != nullptr) {
+    // The skin paints the frame and paper under the content.
+    tile.style.fill = Color{0, 0, 0, 0};
+    tile.style.border_width = 0.0F;
+    tile.style.radii = gfx::CornerRadii::All(skin->corner);
+    const float f = skin->frame;
+    tile.layout.padding = {12 + kTileEdge + f, 10 + f, 12 + f, 10 + f};
+  }
   const int node = ctx.Open(tile);
-  const Color edge = spec.status == Tone::kNeutral ? t.colors.border
-                                                   : ToneColor(t, spec.status);
-  ctx.AddPainter(
-      node,
-      [edge](PaintContext &pc, const Rect &r) {
-        pc.list.FillRect({r.x0 + 1, r.y0 + 4, r.x0 + 1 + kTileEdge, r.y1 - 4},
-                         edge,
-                         gfx::CornerRadii::All(kTileEdge * 0.5F));
-      },
-      true);
+  const Color status_ink =
+      skin != nullptr ? skin->ToneInk(spec.status) : ToneColor(t, spec.status);
+  const Color edge = spec.status == Tone::kNeutral
+                         ? (skin != nullptr ? skin->ink_muted : t.colors.border)
+                         : status_ink;
+  if (skin != nullptr) {
+    const PanelSkin s = *skin;
+    const bool lit = it.hovered || ctx.HasFocus(id);
+    ctx.AddPainter(
+        node,
+        [s, edge, lit](PaintContext &pc, const Rect &r) {
+          const Color paper = lit ? Mix(s.paper, s.ink, 0.06F) : s.paper;
+          PaintFrame(pc.list, r, s, paper, lit ? s.ink : s.ink_muted);
+          const Rect in = r.Inset(s.frame);
+          if (s.scanlines > 0.0F) {
+            Scanlines(pc.list, in, 3.0F, s.ink.WithAlpha(s.scanlines));
+          }
+          pc.list.FillRect(
+              {in.x0 + 1, in.y0 + 4, in.x0 + 1 + kTileEdge, in.y1 - 4},
+              edge,
+              gfx::CornerRadii::All(kTileEdge * 0.5F));
+        },
+        true);
+  } else {
+    ctx.AddPainter(
+        node,
+        [edge](PaintContext &pc, const Rect &r) {
+          pc.list.FillRect({r.x0 + 1, r.y0 + 4, r.x0 + 1 + kTileEdge, r.y1 - 4},
+                           edge,
+                           gfx::CornerRadii::All(kTileEdge * 0.5F));
+        },
+        true);
+  }
+  const Color muted = skin != nullptr ? skin->text_muted : t.colors.text_muted;
   ctx.PushId(id);
   // Title and aside.
   {
@@ -120,10 +157,10 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
     head.width = SizeSpec::Grow();
     head.align = Align::kCenter;
     BeginRow(ctx, head);
-    ctx.Text(Small(t, spec.title, t.colors.text_muted, true));
+    ctx.Text(Small(t, spec.title, muted, true));
     Spacer(ctx);
     if (!spec.aside.empty()) {
-      ctx.Text(Small(t, spec.aside, t.colors.text_muted));
+      ctx.Text(Small(t, spec.aside, muted));
     }
     End(ctx);
   }
@@ -146,8 +183,9 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
     a.wrap = true;
     a.width = SizeSpec::Grow();
     a.size = t.metrics.font_size + 2;
-    a.color = spec.status == Tone::kNeutral ? t.colors.text
-                                            : ToneColor(t, spec.status);
+    a.color = spec.status != Tone::kNeutral ? status_ink
+              : skin != nullptr             ? skin->text
+                                            : t.colors.text;
     Label(ctx, spec.answer.value, a);
     ctx.Close();
     if (!spec.answer.why.empty()) {
@@ -164,7 +202,7 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
   // The items behind it.
   const std::size_t shown = std::min(spec.lines.size(), spec.max_lines);
   for (std::size_t i = 0; i < shown; ++i) {
-    if (ItemLine(ctx, static_cast<int>(i), spec.lines[i])) {
+    if (ItemLine(ctx, static_cast<int>(i), spec.lines[i], spec.skin)) {
       result.line = static_cast<int>(i);
     }
   }
@@ -173,13 +211,13 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
         "+" + std::to_string(spec.lines.size() - shown) + " more";
     TileLine line;
     line.text = more;
-    if (ItemLine(ctx, static_cast<int>(spec.lines.size()), line)) {
+    if (ItemLine(ctx, static_cast<int>(spec.lines.size()), line, spec.skin)) {
       result.action = true;
     }
   }
   if (spec.lines.empty() && !spec.empty.empty()) {
     LabelOptions e;
-    e.muted = true;
+    e.color = muted;
     e.wrap = true;
     e.width = SizeSpec::Grow();
     Label(ctx, spec.empty, e);

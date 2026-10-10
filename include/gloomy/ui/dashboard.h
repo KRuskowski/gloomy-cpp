@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "gloomy/ui/context.h"
+#include "gloomy/ui/skin.h"
 #include "gloomy/ui/summary.h"
 
 namespace gloomy::ui {
@@ -49,6 +50,10 @@ struct TileSpec {
   /// The button that opens the full screen behind the tile: "Fleet (O)".
   /// Empty: no button, but a click on the tile or Enter still acts.
   std::string_view action;
+  /// A stylised panel skin (a ship's or a company's HUD flavour): the
+  /// tile is framed and papered by it and its text uses the skin's inks.
+  /// Null: the theme's card. Must outlive the call.
+  const PanelSkin *skin = nullptr;
 };
 
 /// What the player did with a tile this frame.
