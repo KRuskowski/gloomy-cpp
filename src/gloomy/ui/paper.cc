@@ -560,7 +560,7 @@ auto Certificate(Context &ctx, std::string_view label,
   LayoutSpec foot;
   foot.width = SizeSpec::Grow();
   foot.gap = 8;
-  foot.align = Align::kEnd;
+  foot.align = Align::kCenter;
   foot.padding = {0, 4, 0, 0};
   const int foot_node = BeginRow(ctx, foot);
   Txt(ctx,
@@ -569,6 +569,7 @@ auto Certificate(Context &ctx, std::string_view label,
       t.metrics.small_font_size - 1,
       skin.text_muted);
   Spacer(ctx);
+  StampBox(ctx, spec.stamp, skin, t.metrics.font_size);
   if (spec.held > 1) {
     Txt(ctx,
         "x" + std::to_string(spec.held) + " held",
@@ -579,27 +580,12 @@ auto Certificate(Context &ctx, std::string_view label,
   End(ctx);
   ctx.PopId();
   ctx.Close();
-  const Color seal = house.WithAlpha(0.7F);
-  ctx.AddPainter(foot_node, [seal](PaintContext &pc, const Rect &r) {
-    PaintSeal(pc.list, {r.Center().x, r.Center().y - 2}, 13.0F, seal);
-  });
-  if (!spec.stamp.text.empty()) {
-    const Color color = skin.ToneInk(spec.stamp.tone);
-    const std::string text(spec.stamp.text);
-    const text::FontId bold = t.fonts.bold;
-    const float size = t.metrics.font_size;
-    ctx.AddPainter(face_node,
-                   [color, text, bold, size](PaintContext &pc, const Rect &r) {
-                     const Vec2 sz = StampSize(pc.text, bold, size, text);
-                     PaintStamp(pc.list,
-                                pc.text,
-                                bold,
-                                size,
-                                {r.x1 - kOrnateBand - 6 - sz.x * 0.5F,
-                                 r.y0 + kOrnateBand + 6 + sz.y * 0.5F},
-                                text,
-                                color);
-                   });
+  // The issuer's seal, unless a stamp takes its place.
+  if (spec.stamp.text.empty()) {
+    const Color seal = house.WithAlpha(0.7F);
+    ctx.AddPainter(foot_node, [seal](PaintContext &pc, const Rect &r) {
+      PaintSeal(pc.list, {r.Center().x, r.Center().y - 2}, 13.0F, seal);
+    });
   }
   ctx.Close();
   return ctx.Interact(outer.id).clicked;

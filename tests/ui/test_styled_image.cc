@@ -92,6 +92,7 @@ void Documents(Context &ctx) {
   bond.serial = "Series A - No. 0012";
   bond.held = 3;
   bond.ornament_seed = 2;
+  bond.stamp = {"Outstanding", Tone::kNeutral};
   Certificate(ctx, "##bond", bond);
   PolicySpec policy;
   policy.insurer = {"Teladi Mutual",
