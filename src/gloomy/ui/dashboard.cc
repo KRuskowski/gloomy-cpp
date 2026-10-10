@@ -96,6 +96,7 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
   tile.layout.gap = 5;
   tile.layout.align = Align::kStretch;
   tile.style.fill = InteractiveFill(t, t.colors.surface, it);
+  tile.style.material = t.MaterialOf(Surface::kCard);
   tile.style.border = t.colors.border;
   tile.style.border_width = t.metrics.border_width;
   tile.style.radii = gfx::CornerRadii::All(t.metrics.radius + 2);
