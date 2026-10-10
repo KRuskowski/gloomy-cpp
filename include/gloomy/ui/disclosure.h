@@ -66,6 +66,9 @@ struct BigButtonOptions {
   bool disabled = false;
   /// Why it is disabled, in a tooltip and as the caption.
   std::string_view reason;
+  /// False: drawn in the surface colour rather than the primary one, for
+  /// an action that can be taken but is not advised.
+  bool emphasis = true;
   SizeSpec width = SizeSpec::Fit(160.0F);
 };
 

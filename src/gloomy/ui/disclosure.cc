@@ -189,6 +189,13 @@ auto BigButton(Context &ctx, std::string_view label,
     fg = t.colors.text_disabled;
     sub = t.colors.text_muted;
     desc.flags = kNodeInteractive | kNodeFocusable | kNodeFocusRing;
+  } else if (!opt.emphasis) {
+    desc.style.fill = InteractiveFill(t, t.colors.surface_alt, it);
+    desc.style.border = t.colors.border;
+    desc.style.border_width = t.metrics.border_width;
+    fg = t.colors.text;
+    sub = t.colors.text_muted;
+    desc.flags = kNodeInteractive | kNodeFocusable | kNodeFocusRing;
   } else {
     desc.style.fill = InteractiveFill(t, t.colors.primary, it);
     desc.flags = kNodeInteractive | kNodeFocusable | kNodeFocusRing;

@@ -88,6 +88,25 @@ TEST(DisclosureTest, BigButtonActivatesUnlessDisabled) {
   EXPECT_TRUE(pressed);
   h.Frame(ui, UiHarness::Key(Key::kEnter));
   EXPECT_TRUE(pressed) << "Enter on the focused button";
+  // Without emphasis it still acts, drawn in the surface colour.
+  bool emphasis = true;
+  auto plain = [&](Context &ctx) {
+    BigButtonOptions opt;
+    opt.emphasis = emphasis;
+    pressed = BigButton(ctx, "Bid 42/unit##primary", opt);
+  };
+  emphasis = false;
+  h.Frame(plain);
+  h.Frame(plain, UiHarness::Click(r.Center()));
+  EXPECT_TRUE(pressed);
+  const std::uint32_t primary = h.ctx().theme().colors.primary.Pack();
+  int primary_fills = 0;
+  for (const gfx::DrawList *list : h.ctx().draw_lists()) {
+    for (const gfx::Instance &i : list->instances()) {
+      primary_fills += i.color == primary ? 1 : 0;
+    }
+  }
+  EXPECT_EQ(primary_fills, 0);
   disabled = true;
   h.Frame(ui, UiHarness::Click(r.Center()));
   EXPECT_FALSE(pressed);
@@ -242,6 +261,36 @@ TEST(DisclosureTest, MenuButtonOpensChoosesAndCloses) {
   h.Frame(ui, UiHarness::Key(Key::kEscape));
   h.Frame(ui);
   EXPECT_EQ(h.ctx().draw_lists().size(), 1U) << "Escape closes it";
+}
+
+TEST(DisclosureTest, MenuButtonAtTheRightEdgeKeepsItsWidth) {
+  UiHarness h({800, 600});
+  auto ui = [&](Context &ctx) {
+    LayoutSpec row;
+    row.width = SizeSpec::Grow();
+    BeginRow(ctx, row);
+    Spacer(ctx);
+    if (BeginMenuButton(ctx, "New##new")) {
+      MenuItem(ctx,
+               MenuItemSpec{"Propose a supply deal...",
+                            {},
+                            "To the selected station's owner, at your price"});
+      EndMenuButton(ctx);
+    }
+    End(ctx);
+  };
+  h.Frame(ui);
+  const Id button = h.ctx().GetId("New##new");
+  h.Frame(ui, UiHarness::Click(h.Center(button)));
+  h.Frame(ui);
+  h.Frame(ui);
+  const Id popup = HashCombine(button, 0x6D656E75ULL);
+  h.ctx().PushId(popup);
+  const Id item = h.ctx().GetId(std::uint64_t{0});
+  h.ctx().PopId();
+  const Rect r = h.ctx().LastRect(item).value();
+  EXPECT_GT(r.Width(), 200.0F) << "not squeezed into the space right of it";
+  EXPECT_LE(r.x1, 800.0F);
 }
 
 TEST(DisclosureTest, DialogSummaryAndNestedDialogs) {
