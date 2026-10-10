@@ -12,6 +12,7 @@
 #include "gloomy/data/document.h"
 #include "gloomy/ui/chart.h"
 #include "gloomy/ui/document_view.h"
+#include "gloomy/ui/overlays.h"
 #include "gloomy/ui/widgets.h"
 #include "test_support/ui_harness.h"
 
@@ -410,6 +411,90 @@ TEST(DocumentReachTest, WheelReachesTheEndInsideAScrolledPanel) {
   h.Frame(ui);
   const float viewport = h.ctx().LastRect(id)->Height();
   ExpectAtTheEnd(st, viewport);
+}
+
+// A child wider than a scroll area does not push the area and its scroll
+// bar out of the panel: the area keeps the panel's width, the child is
+// cut there and reported.
+TEST(ScrollReachTest, AWideChildKeepsTheBarInThePanel) {
+  UiHarness h;
+  auto ui = [&](Context &ctx) {
+    LayoutSpec panel;
+    panel.width = SizeSpec::Fixed(300);
+    panel.height = SizeSpec::Fixed(200);
+    panel.padding = Padding::All(8);
+    panel.align = Align::kStretch;
+    BeginPanel(ctx, panel);
+    LayoutSpec body;
+    body.width = SizeSpec::Grow();
+    body.height = SizeSpec::Grow();
+    body.align = Align::kStretch;
+    BeginScroll(ctx, "##body", body);
+    for (int i = 0; i < 20; ++i) {
+      Label(ctx, "Line " + std::to_string(i));
+    }
+    LayoutSpec wide;
+    wide.width = SizeSpec::Fixed(500);
+    BeginRow(ctx, wide);
+    Label(ctx, "A row of fixed columns");
+    End(ctx);
+    EndScroll(ctx);
+    End(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  Context &ctx = h.ctx();
+  ctx.PushId("##body");
+  const Rect bar = ctx.LastRect(ctx.GetId("##bar")).value();
+  const Rect content = ctx.LastRect(ctx.GetId("##content")).value();
+  ctx.PopId();
+  EXPECT_LE(bar.x1, 300.0F - 8.0F + 0.01F) << "the bar stays in the panel";
+  EXPECT_LE(content.x1, bar.x0 + 0.01F);
+  ASSERT_EQ(ctx.Overflows().size(), 1U);
+  EXPECT_EQ(ctx.Overflows().front().text, "A row of fixed columns");
+}
+
+// A dialog never runs off a small screen: it is narrowed and capped to
+// the viewport, its scrolled body shrinks and reaches its last line.
+TEST(ScrollReachTest, ADialogFitsTheScreenAndItsBodyScrolls) {
+  UiHarness h({640, 360});
+  bool open = true;
+  auto ui = [&](Context &ctx) {
+    if (BeginDialog(ctx, "##dialog", "Contracts", open, 900.0F)) {
+      LayoutSpec body;
+      body.width = SizeSpec::Grow();
+      body.height = SizeSpec::Grow();
+      body.align = Align::kStretch;
+      BeginScroll(ctx, "##body", body);
+      for (int i = 0; i < 40; ++i) {
+        Label(ctx, "Clause " + std::to_string(i));
+      }
+      Button(ctx, "Sign");
+      EndScroll(ctx);
+      EndDialog(ctx, open);
+    }
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  Context &ctx = h.ctx();
+  ctx.PushId(ctx.GetId("##dialog"));
+  const Rect panel = ctx.LastRect(ctx.GetId("##panel")).value();
+  ctx.PushId("##body");
+  const Id content = ctx.GetId("##content");
+  const Id sign = ctx.GetId("Sign");
+  ctx.PopId();
+  ctx.PopId();
+  EXPECT_GE(panel.x0, 0.0F);
+  EXPECT_LE(panel.x1, 640.0F);
+  EXPECT_GE(panel.y0, 0.0F);
+  EXPECT_LE(panel.y1, 360.0F);
+  EXPECT_TRUE(ctx.Overflows().empty()) << ctx.Overflows().front().text;
+  const Vec2 c = h.Center(content);
+  for (int i = 0; i < 10; ++i) {
+    h.Frame(ui, {InputEvent::Move(c.x, c.y), InputEvent::Wheel(0, -10)});
+  }
+  h.Frame(ui);
+  EXPECT_LE(ctx.LastRect(sign)->y1, ctx.LastRect(content)->y1 + 0.01F);
 }
 
 }  // namespace

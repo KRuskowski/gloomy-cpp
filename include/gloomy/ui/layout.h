@@ -99,6 +99,11 @@ struct LayoutSpec {
   bool scroll_y = false;
   /// Content offset for scrolling (positive moves content up/left).
   Vec2 scroll;
+  /// Asks for no minimum width from its parent: it takes the width it is
+  /// given and children wider than that are cut (and reported by
+  /// Context::Overflows()). Vertical scroll areas set it, so a wide child
+  /// never pushes the area and its scroll bar past the panel.
+  bool shrink_x = false;
 };
 
 /// Content sizes reported by a Measurer for a leaf.

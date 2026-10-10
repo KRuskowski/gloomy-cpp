@@ -1031,6 +1031,7 @@ void BeginScroll(Context &ctx, std::string_view label, LayoutSpec layout) {
   area.layout.width = SizeSpec::Grow();
   area.layout.height = SizeSpec::Grow();
   area.layout.scroll_y = true;
+  area.layout.shrink_x = true;
   area.layout.scroll = {0, static_cast<float>(st.offset)};
   area.layout.gap = layout.gap;
   area.layout.padding = layout.padding;

@@ -188,7 +188,7 @@ void LayoutTree::FitWidths(int root, Measurer &measurer) {
         cpref = cpref * static_cast<float>(cols) + col_gaps;
       }
     }
-    if (s.scroll_x) {
+    if (s.scroll_x || s.shrink_x) {
       cmin = 0.0F;
     }
     ApplySpec(s.width, cmin + pad, cpref + pad, n.min_w, n.pref_w);

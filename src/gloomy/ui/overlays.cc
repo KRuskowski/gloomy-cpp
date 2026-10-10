@@ -269,6 +269,13 @@ void EndMenuButton(Context &ctx) {
   FinishMenu(ctx);
 }
 
+namespace {
+
+/// Space a dialog keeps from the screen's edges.
+constexpr float kDialogMargin = 12.0F;
+
+}  // namespace
+
 auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
                  bool &open, float width) -> bool {
   DialogOptions opt;
@@ -288,7 +295,13 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
   NodeDesc panel;
   panel.id = ctx.GetId("##panel");
   panel.layout.mode = LayoutMode::kColumn;
-  panel.layout.width = SizeSpec::Fixed(opt.width);
+  // Never larger than the screen: a dialog's body scrolls (BeginScroll())
+  // where the screen is small; what cannot shrink is cut at the panel.
+  const Vec2 screen = ctx.viewport();
+  panel.layout.width =
+      SizeSpec::Fixed(std::min(opt.width, screen.x - 2 * kDialogMargin));
+  panel.layout.height = SizeSpec::Fit();
+  panel.layout.height.max = std::max(0.0F, screen.y - 2 * kDialogMargin);
   panel.layout.padding = Padding::All(16);
   panel.layout.gap = 10;
   panel.layout.align = Align::kStretch;
@@ -300,7 +313,7 @@ auto BeginDialog(Context &ctx, std::string_view label, std::string_view title,
   panel.style.shadow = t.colors.shadow;
   panel.style.shadow_blur = 18;
   panel.style.shadow_offset = {0, 6};
-  panel.flags = kNodeInteractive;
+  panel.flags = kNodeInteractive | kNodeClip;
   ctx.Open(panel);
   LayoutSpec head;
   head.align = Align::kCenter;
