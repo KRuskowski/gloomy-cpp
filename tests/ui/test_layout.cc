@@ -95,6 +95,42 @@ TEST(LayoutTest, RowShrinksChildrenToTheirMinimum) {
   EXPECT_FLOAT_EQ(tree.node(a).rect.Height(), 40.0F);
 }
 
+// A column short of room takes it from its growing child first (a
+// scrolling body), and only then from the rest (the header above it).
+TEST(LayoutTest, ColumnShrinksGrowingChildrenFirst) {
+  LayoutTree tree;
+  FakeMeasurer m;
+  const int r = tree.Add(
+      -1,
+      Spec(LayoutMode::kColumn, SizeSpec::Fixed(100), SizeSpec::Fixed(100)));
+  LayoutSpec header =
+      Spec(LayoutMode::kColumn, SizeSpec::Grow(), SizeSpec::Preferred(60, 20));
+  const int a = tree.Add(r, header);
+  LayoutSpec body =
+      Spec(LayoutMode::kColumn, SizeSpec::Grow(), SizeSpec::Grow());
+  body.height.min = 30.0F;
+  body.scroll_y = true;
+  const int b = tree.Add(r, body);
+  tree.Add(b,
+           Spec(LayoutMode::kColumn, SizeSpec::Grow(), SizeSpec::Fixed(200)));
+  tree.Compute(r, Rect{0, 0, 100, 100}, m);
+  // 60 + 200 > 100: the body gives down to its min of 30 first, so the
+  // header keeps 60 and the body ends up with the 40 left.
+  EXPECT_FLOAT_EQ(tree.node(a).rect.Height(), 60.0F);
+  EXPECT_FLOAT_EQ(tree.node(b).rect.Height(), 40.0F);
+  // Shorter still: the body stops at its min, the header gives the rest.
+  LayoutTree small;
+  const int r2 = small.Add(
+      -1, Spec(LayoutMode::kColumn, SizeSpec::Fixed(100), SizeSpec::Fixed(70)));
+  const int a2 = small.Add(r2, header);
+  const int b2 = small.Add(r2, body);
+  small.Add(b2,
+            Spec(LayoutMode::kColumn, SizeSpec::Grow(), SizeSpec::Fixed(200)));
+  small.Compute(r2, Rect{0, 0, 100, 70}, m);
+  EXPECT_FLOAT_EQ(small.node(b2).rect.Height(), 30.0F);
+  EXPECT_FLOAT_EQ(small.node(a2).rect.Height(), 40.0F);
+}
+
 TEST(LayoutTest, ColumnAlignAndJustify) {
   LayoutTree tree;
   FakeMeasurer m;

@@ -105,20 +105,34 @@ void LayoutTree::DistributeMain(int index, bool horizontal, float available) {
       extra -= used;
     }
   } else if (total > available) {
-    // Shrink: take space from children in proportion to what they can give.
-    // Fixed sizes give only what lies above their min (Preferred()).
-    float capacity = 0.0F;
-    for (int c = n.first_child; c >= 0; c = nodes_[c].next_sibling) {
-      const LayoutNode &child = nodes_[c];
-      capacity += std::max(0.0F, size(nodes_[c]) - min(child));
-    }
-    if (capacity <= 0.0F) {
-      return;
-    }
-    const float take = std::min(1.0F, (total - available) / capacity);
-    for (int c = n.first_child; c >= 0; c = nodes_[c].next_sibling) {
-      LayoutNode &child = nodes_[c];
-      size(child) -= std::max(0.0F, size(child) - min(child)) * take;
+    // Shrink: take space from children in proportion to what they can give,
+    // growing children first: they take the room the others leave, so they
+    // also give it back first (a scrolling body under a header that should
+    // keep its size). Fixed sizes give only what lies above their min
+    // (Preferred()).
+    float over = total - available;
+    for (const bool grow_only : {true, false}) {
+      float capacity = 0.0F;
+      for (int c = n.first_child; c >= 0; c = nodes_[c].next_sibling) {
+        const LayoutNode &child = nodes_[c];
+        if (!grow_only || spec(child).kind == SizeKind::kGrow) {
+          capacity += std::max(0.0F, size(nodes_[c]) - min(child));
+        }
+      }
+      if (capacity <= 0.0F) {
+        continue;
+      }
+      const float take = std::min(1.0F, over / capacity);
+      for (int c = n.first_child; c >= 0; c = nodes_[c].next_sibling) {
+        LayoutNode &child = nodes_[c];
+        if (!grow_only || spec(child).kind == SizeKind::kGrow) {
+          size(child) -= std::max(0.0F, size(child) - min(child)) * take;
+        }
+      }
+      over -= std::min(over, capacity);
+      if (over <= 0.0F) {
+        break;
+      }
     }
   }
 }

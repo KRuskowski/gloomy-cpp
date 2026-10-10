@@ -179,7 +179,7 @@ Rich inline markup (`<b>`, `<i>`, `<color=#rrggbb>`, `<size=..>`, `<mono>`, `<li
 Nodes carry a layout spec: direction (row, column, grid, stack/overlay), padding, gap, main and cross alignment, per-axis sizing (`Fixed(px)`, `Fit` (content, with min/max), `Grow(weight)`, `Percent`), and grid templates (`Px`, `Fr`, `Auto` tracks, explicit cell and span). The algorithm follows Clay's pass order so wrapped text gets correct heights:
 
 1. Fit widths bottom-up (text: longest unbreakable word as minimum, full line as preferred).
-2. Distribute widths top-down: grow nodes share leftover space by weight, shrink when over-full, respecting min/max.
+2. Distribute widths top-down: grow nodes share leftover space by weight, shrink when over-full, respecting min/max. Over-full, grow nodes give back first (down to their min), then the others in proportion to what they can give: a scrolling body yields before the header above it.
 3. Wrap text to the final widths (via the text module's measure callback).
 4. Fit heights bottom-up, then 5. distribute heights top-down.
 6. Positions top-down, applying alignment, scroll offsets and clipping.
