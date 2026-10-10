@@ -72,8 +72,10 @@ auto Button(Context &ctx, std::string_view label,
 /// A button that cannot be pressed now: drawn greyed out, never activates,
 /// and says why in a tooltip (`reason`, empty for none), so the action
 /// stays visible where it will be (answer-first: show what is missing).
+/// `kind` keeps its look: a flat one has no frame.
 void DisabledButton(Context &ctx, std::string_view label,
-                    std::string_view reason);
+                    std::string_view reason,
+                    ButtonKind kind = ButtonKind::kNormal);
 
 /// @return True when toggled.
 auto Checkbox(Context &ctx, std::string_view label, bool &value) -> bool;

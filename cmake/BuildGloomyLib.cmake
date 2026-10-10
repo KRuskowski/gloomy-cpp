@@ -71,6 +71,7 @@ add_library(GlText OBJECT
 )
 
 add_library(GlUi OBJECT
+  src/gloomy/ui/action_bar.cc
   src/gloomy/ui/canvas.cc
   src/gloomy/ui/chart.cc
   src/gloomy/ui/context.cc
@@ -79,11 +80,13 @@ add_library(GlUi OBJECT
   src/gloomy/ui/disclosure.cc
   src/gloomy/ui/dock.cc
   src/gloomy/ui/document_view.cc
+  src/gloomy/ui/feed.cc
   src/gloomy/ui/finder.cc
   src/gloomy/ui/hud.cc
   src/gloomy/ui/label_placer.cc
   src/gloomy/ui/key_chord.cc
   src/gloomy/ui/layout.cc
+  src/gloomy/ui/list_rows.cc
   src/gloomy/ui/menu_list.cc
   src/gloomy/ui/navigation.cc
   src/gloomy/ui/overlays.cc

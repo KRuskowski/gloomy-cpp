@@ -240,7 +240,7 @@ auto Button(Context &ctx, std::string_view label, ButtonKind kind) -> bool {
 }
 
 void DisabledButton(Context &ctx, std::string_view label,
-                    std::string_view reason) {
+                    std::string_view reason, ButtonKind kind) {
   const Theme &t = ctx.theme();
   const Id id = ctx.GetId(label);
   // Interact only for the tooltip's hover.
@@ -252,9 +252,12 @@ void DisabledButton(Context &ctx, std::string_view label,
   desc.layout.padding = Padding::Xy(t.metrics.padding_x * 1.5F, 0);
   desc.layout.align = Align::kCenter;
   desc.layout.justify = Justify::kCenter;
-  desc.style.fill = t.colors.surface;
-  desc.style.border = t.colors.border;
-  desc.style.border_width = t.metrics.border_width;
+  // A flat button stays flat: only its text greys out.
+  if (kind != ButtonKind::kFlat) {
+    desc.style.fill = t.colors.surface;
+    desc.style.border = t.colors.border;
+    desc.style.border_width = t.metrics.border_width;
+  }
   desc.style.radii = gfx::CornerRadii::All(t.metrics.radius);
   desc.flags = kNodeInteractive;
   ctx.Open(desc);

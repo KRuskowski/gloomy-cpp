@@ -4,11 +4,16 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string_view>
+#include <vector>
 
 #include "gloomy/gfx/backdrop_blur.h"
 #include "gloomy/gfx/offscreen_target.h"
 #include "gloomy/gfx/scene_renderer.h"
 #include "gloomy/gfx/ui_renderer.h"
+#include "gloomy/ui/action_bar.h"
+#include "gloomy/ui/feed.h"
+#include "gloomy/ui/list_rows.h"
 #include "gloomy/ui/widgets.h"
 #include "test_support/gpu_test.h"
 #include "test_support/ui_harness.h"
@@ -198,6 +203,88 @@ void GlassUi(ui::Context &ctx) {
   ui::End(ctx);
 }
 
+/// Lists on glass: an action bar, a feed, cell rows (one selected) and a
+/// queue row, in a panel over the scene.
+void ListsUi(ui::Context &ctx) {
+  static const std::vector<ui::CellColumn> kColumns = {
+      {"Ship", 90, ui::CellAlign::kLeft, {}},
+      {"Order", 0, ui::CellAlign::kLeft, {}},
+      {"Cr/h", 50, ui::CellAlign::kRight, {}},
+  };
+  static const std::vector<ui::RowAction> kActions = {
+      {"Show", {}, ui::ButtonKind::kFlat}};
+  static const std::vector<std::string_view> kOrders = {"Orders"};
+  static const std::vector<ui::BarAction> kBar = {
+      {"Company (M)", "Company", 1, ui::ButtonKind::kNormal, {}, {}},
+      {"What should I do? (A)", "Advice", 3, ui::ButtonKind::kPrimary, {}, {}},
+  };
+  ui::LayoutSpec root;
+  root.padding = ui::Padding::All(12);
+  root.width = ui::SizeSpec::Grow();
+  root.height = ui::SizeSpec::Grow();
+  root.gap = 2;
+  root.align = ui::Align::kStretch;
+  ui::BeginPanel(ctx, root);
+  ui::ActionBar(ctx, "##bar", kBar);
+  const std::vector<ui::Notification> feed = {
+      {"Loses 1,314 Cr/h",
+       ui::Priority::kUrgent,
+       "Courier 2",
+       "just now",
+       kOrders,
+       {},
+       true},
+      {"Idle for 3 h",
+       ui::Priority::kHigh,
+       "Freighter",
+       "1 h ago",
+       kOrders,
+       {},
+       false},
+  };
+  ui::FeedOptions options;
+  options.age_width = 60;
+  options.source_width = 80;
+  ui::NotificationFeed(ctx, "##feed", feed, options);
+  ui::CellHeader(ctx, "##head", kColumns, kActions);
+  for (int i = 0; i < 2; ++i) {
+    const std::vector<ui::Cell> cells = {
+        {i == 0 ? "Courier 2" : "Freighter",
+         ui::Tone::kNeutral,
+         {},
+         true,
+         false,
+         {}},
+        {i == 0 ? "Auto trade" : "Route 2/3",
+         ui::Tone::kNeutral,
+         {},
+         false,
+         false,
+         {}},
+        {i == 0 ? "-1,314" : "+420",
+         i == 0 ? ui::Tone::kBad : ui::Tone::kGood,
+         {},
+         true,
+         false,
+         {}},
+    };
+    ui::CellRowOptions o;
+    o.selected = i == 1;
+    o.status = i == 0 ? ui::Tone::kBad : ui::Tone::kNeutral;
+    o.actions = kActions;
+    ctx.PushId(static_cast<std::uint64_t>(i));
+    ui::CellRow(ctx, "##row", kColumns, cells, o);
+    ctx.PopId();
+  }
+  ui::QueueRowSpec q;
+  q.index = 0;
+  q.count = 2;
+  q.text = "Dock at Farm";
+  q.current = true;
+  ui::QueueRow(ctx, "##queue", q);
+  ui::End(ctx);
+}
+
 /// Relative luminance of an sRGB pixel (WCAG).
 auto Luminance(const std::uint8_t *p) -> double {
   auto lin = [](std::uint8_t c) {
@@ -290,6 +377,27 @@ TEST_F(GlassImageTest, TextStaysReadableOverABusyScene) {
   const Image img = RenderOver(h, Pattern::kBusy);
   const Rect strip{30, 260, 200, 276};
   EXPECT_GE(WorstContrast(img, strip, h.ctx().theme().colors.text), 4.5);
+}
+
+TEST_F(GlassImageTest, ListsOnGlassLetItShowThrough) {
+  testing::UiHarness h({480.0F, 300.0F});
+  h.ctx().SetTheme(ui::Theme::Dark(h.fonts()).WithGlass());
+  h.Frame(ListsUi);
+  h.Frame(ListsUi);
+  const Image img = RenderOver(h, Pattern::kBusy);
+  testing::ExpectMatchesReference(img, "glass_lists", 2, 40);
+  // A row that is neither hovered nor selected paints nothing over the
+  // glass, and the text stays readable on it: the empty end of its grow
+  // column.
+  ui::Context &c = h.ctx();
+  c.PushId(std::uint64_t{0});
+  const Id row = c.GetId("##row");
+  c.PushId(row);
+  const Rect order = c.LastRect(c.GetId("##c1")).value();
+  c.PopId();
+  c.PopId();
+  const Rect strip{order.x1 - 40, order.y0 + 2, order.x1 - 4, order.y1 - 2};
+  EXPECT_GE(WorstContrast(img, strip, c.theme().colors.text), 4.5);
 }
 
 TEST_F(GlassImageTest, WithoutASceneGlassIsSolid) {
