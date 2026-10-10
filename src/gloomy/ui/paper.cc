@@ -402,6 +402,26 @@ auto SignatureSealCentre(const Rect &rule) -> Vec2 {
           rule.y0 - kSignatureSealRadius - 2};
 }
 
+auto BeginSkinPanel(Context &ctx, std::string_view label, const PanelSkin &skin,
+                    float gap) -> int {
+  NodeDesc panel;
+  panel.id = ctx.GetId(label);
+  panel.layout.mode = LayoutMode::kColumn;
+  panel.layout.width = SizeSpec::Grow();
+  panel.layout.padding = Padding::All(skin.frame + 8);
+  panel.layout.gap = gap;
+  panel.layout.align = Align::kStretch;
+  const int node = ctx.Open(panel);
+  PaperPainter(ctx, node, skin, skin.ink_muted);
+  ctx.PushId(panel.id);
+  return node;
+}
+
+void EndSkinPanel(Context &ctx) {
+  ctx.PopId();
+  ctx.Close();
+}
+
 auto BeginContractSheet(Context &ctx, std::string_view label,
                         const ContractSheetSpec &spec) -> int {
   const PanelSkin skin = SkinOf(ctx, spec.skin, false);

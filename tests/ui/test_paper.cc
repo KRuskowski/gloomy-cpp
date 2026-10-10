@@ -61,6 +61,33 @@ auto SignatureChild(Context &ctx, int party, std::string_view child) -> Id {
   return id;
 }
 
+TEST(PaperTest, SkinPanelHoldsItsContentClearOfTheFrame) {
+  UiHarness h({600, 400});
+  PanelSkin skin;
+  skin.frame = 5.0F;
+  bool pressed = false;
+  auto ui = [&](Context &ctx) {
+    BeginColumn(ctx, {.width = SizeSpec::Grow()});
+    BeginSkinPanel(ctx, "##panel", skin);
+    Label(ctx, "Orders of Lunar Wind");
+    pressed = Button(ctx, "Go", ButtonKind::kPrimary);
+    EndSkinPanel(ctx);
+    End(ctx);
+  };
+  h.Frame(ui);
+  h.Frame(ui);
+  Context &c = h.ctx();
+  const Rect panel = c.LastRect(c.GetId("##panel")).value();
+  const Id button = SheetChild(c, "##panel", "Go");
+  const Rect inside = c.LastRect(button).value();
+  EXPECT_NEAR(panel.Width(), 600.0F, 0.5F);
+  EXPECT_GE(inside.x0 - panel.x0, skin.frame);
+  EXPECT_GE(inside.y0 - panel.y0, skin.frame);
+  EXPECT_LE(inside.y1, panel.y1 - skin.frame);
+  h.Frame(ui, UiHarness::Click(h.Center(button)));
+  EXPECT_TRUE(pressed);
+}
+
 TEST(PaperTest, AnEmptyColourInitialiserMeansNone) {
   // `{}` must not be Color{}, which is opaque black.
   EXPECT_FALSE(kParties[1].color.has_value());

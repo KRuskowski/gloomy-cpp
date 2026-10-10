@@ -66,6 +66,20 @@ inline constexpr float kSignatureRuleGap = 4.0F;
 /// @return the seal's centre
 [[nodiscard]] auto SignatureSealCentre(const Rect &rule) -> Vec2;
 
+/// Opens a panel framed and papered by `skin` (chunky frame, bolts, scan
+/// lines; as a contract sheet without its letterhead): a column that grows
+/// to the width, its padding clear of the frame. The host draws the
+/// content, then calls EndSkinPanel().
+/// @param[in] label id of the panel
+/// @param[in] skin the skin; copied
+/// @param[in] gap space between the children
+/// @return The panel's node.
+auto BeginSkinPanel(Context &ctx, std::string_view label, const PanelSkin &skin,
+                    float gap = 6.0F) -> int;
+
+/// Closes a panel opened with BeginSkinPanel().
+void EndSkinPanel(Context &ctx);
+
 /// A rubber stamp for a document's state ("OPEN", "AWARDED", "FULFILLED",
 /// "BREACHED"); empty text draws none.
 struct Stamp {
