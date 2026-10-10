@@ -73,6 +73,7 @@ add_library(GlText OBJECT
 add_library(GlUi OBJECT
   src/gloomy/ui/action_bar.cc
   src/gloomy/ui/canvas.cc
+  src/gloomy/ui/cargo_hold.cc
   src/gloomy/ui/chart.cc
   src/gloomy/ui/context.cc
   src/gloomy/ui/dashboard.cc
@@ -90,7 +91,10 @@ add_library(GlUi OBJECT
   src/gloomy/ui/menu_list.cc
   src/gloomy/ui/navigation.cc
   src/gloomy/ui/overlays.cc
+  src/gloomy/ui/paper.cc
   src/gloomy/ui/radial_menu.cc
+  src/gloomy/ui/schematic.cc
+  src/gloomy/ui/skin.cc
   src/gloomy/ui/summary.cc
   src/gloomy/ui/theme.cc
   src/gloomy/ui/timeline.cc
