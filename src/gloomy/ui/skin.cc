@@ -179,7 +179,6 @@ auto PanelSkin::OnPaper() const -> PanelSkin {
   s.friendly = Mix(friendly, dark, 0.45F);
   s.neutral = Mix(neutral, dark, 0.6F);
   s.hostile = Mix(hostile, dark, 0.3F);
-  s.scanlines = 0.0F;
   s.glow = 0.0F;
   return s;
 }
@@ -266,8 +265,6 @@ auto ParsePanelSkin(std::string_view text, const PanelSkin &base,
       scale = 2.0F;
     } else if (key == "glow") {
       number_out = &s.glow;
-    } else if (key == "scanlines") {
-      number_out = &s.scanlines;
     } else if (key == "panel_frame") {
       number_out = &s.frame;
     } else if (key == "panel_inset") {

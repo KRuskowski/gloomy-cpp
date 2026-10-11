@@ -4,7 +4,6 @@
 #include <cmath>
 #include <string>
 
-#include "gloomy/ui/hud.h"
 #include "gloomy/ui/widgets.h"
 
 namespace gloomy::ui {
@@ -253,10 +252,6 @@ auto ShipSchematic(Context &ctx, std::string_view label,
         frame_node,
         [s](PaintContext &pc, const Rect &r) {
           PaintFrame(pc.list, r, s, s.paper, s.ink_muted.WithAlpha(0.8F));
-          if (s.scanlines > 0.0F) {
-            Scanlines(
-                pc.list, r.Inset(s.frame), 3.0F, s.ink.WithAlpha(s.scanlines));
-          }
         },
         true);
   }

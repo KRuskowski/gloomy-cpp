@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <string>
 
-#include "gloomy/ui/hud.h"
 #include "gloomy/ui/widgets.h"
 
 namespace gloomy::ui {
@@ -301,10 +300,6 @@ void PaperPainter(Context &ctx, int node, const PanelSkin &skin, Color edge) {
                        {0, 3},
                        gfx::CornerRadii::All(s.corner));
         PaintFrame(pc.list, r, s, s.paper, edge);
-        if (s.scanlines > 0.0F) {
-          Scanlines(
-              pc.list, r.Inset(s.frame), 3.0F, s.ink.WithAlpha(s.scanlines));
-        }
       },
       true);
 }

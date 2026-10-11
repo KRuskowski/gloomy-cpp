@@ -57,8 +57,6 @@ struct PanelSkin {
   float bolt = 1.5F;
   /// Glow around lines in pixels (GlowLine()); 0 for none.
   float glow = 0.0F;
-  /// Strength (alpha) of scan lines over terminal paper; 0 for none.
-  float scanlines = 0.0F;
 
   /// The colour of a tone: neutral is the text colour.
   [[nodiscard]] auto ToneInk(Tone tone) const -> Color;
@@ -75,7 +73,7 @@ struct PanelSkin {
 /// Reads a skin from "key = value" lines over `base` ('#' starts a
 /// comment). Keys shared with HUD skins: name, primary (ink), secondary
 /// (ink_muted), own (good), friendly, neutral, hostile, warning, alert
-/// (bad), line (frame = 2 x line), glow, scanlines. Panel keys:
+/// (bad), line (frame = 2 x line), glow. Panel keys:
 /// panel_paper, panel_paper_edge, panel_text, panel_text_muted,
 /// panel_frame, panel_inset, panel_corner, panel_bolt. Colours are #RRGGBB
 /// or #RRGGBBAA. Unknown keys are skipped silently (a HUD skin's

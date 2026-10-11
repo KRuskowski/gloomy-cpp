@@ -79,14 +79,4 @@ void GlowLine(gfx::DrawList &list, Vec2 a, Vec2 b, float width,
   list.Line(a, b, width, color);
 }
 
-void Scanlines(gfx::DrawList &list, const Rect &rect, float spacing,
-               const Color &color) {
-  if (spacing < 1.0F || color.a <= 0.0F) {
-    return;
-  }
-  for (float y = rect.y0; y < rect.y1; y += spacing) {
-    list.FillRect({rect.x0, y, rect.x1, y + 1.0F}, color);
-  }
-}
-
 }  // namespace gloomy::ui
