@@ -13,6 +13,10 @@ option(BUILD_TESTS
   "Build unit and image tests."
   ON)
 
+option(BUILD_PLOT
+  "Build gloomy::plot: matplot++ figures drawn by gloomy (fetches matplot++)."
+  ON)
+
 option(BUILD_PLATFORM_SDL2
   "Build the SDL2 window and input platform layer."
   ON)
@@ -29,3 +33,5 @@ option(ENABLE_SANITIZERS
 #
 set(GLOOMY_NANOSVG_DIR ""
   CACHE PATH "Local nanosvg checkout (with src/nanosvg.h); empty fetches it.")
+set(GLOOMY_MATPLOT_DIR ""
+  CACHE PATH "Local matplot++ checkout for BUILD_PLOT; empty fetches it.")

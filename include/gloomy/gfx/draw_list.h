@@ -2,6 +2,7 @@
 #define GLOOMY_GFX_DRAW_LIST_H_
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "gloomy/core/color.h"
@@ -22,6 +23,10 @@ enum class PrimitiveKind : std::uint32_t {
   /// A regular hexagon in its circumcircle's bounds; radii[0] 1 for
   /// pointy-top (vertices up and down), 0 for flat-top.
   kHexagon = 5,
+  /// A triangle: rect holds its bounds, radii its first two vertices
+  /// (x, y, x, y), uv[0..1] the third; stroke the edges to antialias
+  /// (bit 0: first to second, 1: second to third, 2: third to first).
+  kTriangle = 6,
 };
 
 /// How a glass shape looks over the blurred backdrop.
@@ -111,6 +116,27 @@ class DrawList {
   /// use FillRect.
   void Line(Vec2 a, Vec2 b, float width, const Color &c);
 
+  /// Connected straight segments through `points`, `width` pixels wide;
+  /// wide lines get round joints so that bends show no notches.
+  void Polyline(std::span<const Vec2> points, float width, const Color &c);
+
+  /// A filled triangle. Edges in `aa_edges` (bit 0: a to b, 1: b to c,
+  /// 2: c to a) are antialiased; the others cut hard at pixel centres, so
+  /// that triangles sharing them tile without seams (FillPolygon()).
+  void FillTriangle(Vec2 a, Vec2 b, Vec2 c, const Color &col,
+                    std::uint32_t aa_edges = 7U);
+
+  /// A filled simple polygon (no edge crosses another), clipped into
+  /// triangles by ears: its outline antialiased, no seams inside. O(n^2)
+  /// in the vertices; areas under curves are FillBand()'s.
+  void FillPolygon(std::span<const Vec2> points, const Color &c);
+
+  /// The area between two polylines of equal length, point i of `top`
+  /// over point i of `bottom` (an area chart, a band, a depth chart's
+  /// steps): a quad per segment in O(n), its top and bottom antialiased.
+  void FillBand(std::span<const Vec2> top, std::span<const Vec2> bottom,
+                const Color &c);
+
   /// A regular hexagon of circumradius `radius` (centre to vertex), flat
   /// top and bottom unless `pointy` (vertices up and down); hex grids
   /// tile with flat-top cells `1.5 * radius` apart in x.
@@ -132,6 +158,11 @@ class DrawList {
   /// @param[in] r Pixel rectangle covered by the bitmap.
   /// @param[in] uv Normalised atlas rectangle u0, v0, u1, v1.
   void Glyph(const Rect &r, const Rect &uv, int page, const Color &c);
+
+  /// Appends `other`'s primitives (recorded elsewhere, e.g. a cached plot)
+  /// under this list's clip and alpha: a primitive outside the clip is
+  /// dropped, the others are clipped to it and faded by the alpha.
+  void Append(const DrawList &other);
 
   /// Intersects the clip rectangle with `r` until the matching PopClip().
   void PushClip(const Rect &r);

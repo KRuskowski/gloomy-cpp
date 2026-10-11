@@ -33,6 +33,7 @@ const uint kLine = 2u;
 const uint kGlyph = 3u;
 const uint kGlass = 4u;
 const uint kHexagon = 5u;
+const uint kTriangle = 6u;
 
 // Rounded box; radii are top-left, top-right, bottom-right, bottom-left
 // with y pointing down.
@@ -51,6 +52,51 @@ float Hexagon(vec2 p, float r) {
   p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy;
   p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
   return length(p) * sign(p.y);
+}
+
+// Outward unit normal of edge a-b of a triangle whose third vertex is c;
+// zero for a degenerate edge.
+vec2 EdgeNormal(vec2 a, vec2 b, vec2 c) {
+  vec2 e = b - a;
+  float len = length(e);
+  if (len < 1e-6) {
+    return vec2(0.0);
+  }
+  vec2 n = vec2(e.y, -e.x) / len;
+  return dot(c - a, n) > 0.0 ? -n : n;
+}
+
+// Whether pixel centre p is inside across a hard (inner) edge: on the
+// edge itself the top-left rule gives it to exactly one of the two
+// triangles sharing it (the one whose outward normal points left, or up),
+// so translucent fills are not blended twice there.
+bool InsideHard(vec2 p, vec2 a, vec2 n) {
+  float d = dot(p - a, n);
+  if (abs(d) > 1e-3) {
+    return d < 0.0;
+  }
+  return n.x < 0.0 || (n.x == 0.0 && n.y < 0.0);
+}
+
+// Coverage of pixel p by a triangle: antialiased across the edges in
+// `aa` (bits 0: a-b, 1: b-c, 2: c-a), hard at the pixel centre across the
+// others, so that triangles sharing those tile without seams.
+float TriangleCoverage(vec2 p, vec2 a, vec2 b, vec2 c, uint aa) {
+  vec2 from[3] = vec2[](a, b, c);
+  vec2 n[3] = vec2[](EdgeNormal(a, b, c), EdgeNormal(b, c, a),
+                     EdgeNormal(c, a, b));
+  float cover = 1.0;
+  for (int i = 0; i < 3; ++i) {
+    if (n[i] == vec2(0.0)) {
+      continue;
+    }
+    if ((aa & (1u << uint(i))) != 0u) {
+      cover *= clamp(0.5 - dot(p - from[i], n[i]), 0.0, 1.0);
+    } else if (!InsideHard(p, from[i], n[i])) {
+      return 0.0;
+    }
+  }
+  return cover;
 }
 
 // Coverage of a pixel at signed distance d from the edge.
@@ -95,6 +141,10 @@ void main() {
   if (kind == kGlyph) {
     float page = float(v_kind >> 8u);
     alpha = texture(u_atlas, vec3(v_uv, page)).r;
+  } else if (kind == kTriangle) {
+    // Exact pixel centres, so that the top-left rule is exact too.
+    alpha = TriangleCoverage(gl_FragCoord.xy, v_radii.xy, v_radii.zw,
+                             v_glass, uint(stroke + 0.5));
   } else {
     float d;
     if (kind == kCircle) {

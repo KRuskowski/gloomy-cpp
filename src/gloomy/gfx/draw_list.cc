@@ -164,6 +164,163 @@ void DrawList::Line(Vec2 a, Vec2 b, float width, const Color &c) {
   inst.radii[0] = width;
 }
 
+void DrawList::Polyline(std::span<const Vec2> points, float width,
+                        const Color &c) {
+  for (std::size_t i = 1; i < points.size(); ++i) {
+    Line(points[i - 1], points[i], width, c);
+  }
+  // Round joints: wide segments meeting at an angle leave a notch.
+  if (width > 2.0F) {
+    for (std::size_t i = 1; i + 1 < points.size(); ++i) {
+      FillCircle(points[i], width * 0.5F, c);
+    }
+  }
+}
+
+void DrawList::FillTriangle(Vec2 a, Vec2 b, Vec2 c, const Color &col,
+                            std::uint32_t aa_edges) {
+  const Rect bounds{std::fmin(a.x, std::fmin(b.x, c.x)),
+                    std::fmin(a.y, std::fmin(b.y, c.y)),
+                    std::fmax(a.x, std::fmax(b.x, c.x)),
+                    std::fmax(a.y, std::fmax(b.y, c.y))};
+  if (Culled(bounds)) {
+    return;
+  }
+  Instance &inst = Push(PrimitiveKind::kTriangle, bounds);
+  inst.radii[0] = a.x;
+  inst.radii[1] = a.y;
+  inst.radii[2] = b.x;
+  inst.radii[3] = b.y;
+  inst.uv[0] = c.x;
+  inst.uv[1] = c.y;
+  inst.stroke = static_cast<float>(aa_edges & 7U);
+  inst.color = Packed(col);
+  inst.color2 = inst.color;
+}
+
+namespace {
+
+auto Cross(Vec2 o, Vec2 a, Vec2 b) -> float {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+/// Whether `p` lies inside (or on) triangle a, b, c of orientation `sign`.
+auto Inside(Vec2 p, Vec2 a, Vec2 b, Vec2 c, float sign) -> bool {
+  return Cross(a, b, p) * sign >= 0.0F && Cross(b, c, p) * sign >= 0.0F &&
+         Cross(c, a, p) * sign >= 0.0F;
+}
+
+}  // namespace
+
+void DrawList::FillPolygon(std::span<const Vec2> points, const Color &c) {
+  const std::size_t n = points.size();
+  if (n < 3) {
+    return;
+  }
+  // Orientation from the signed area.
+  float area = 0.0F;
+  for (std::size_t i = 0; i < n; ++i) {
+    const Vec2 p = points[i];
+    const Vec2 q = points[(i + 1) % n];
+    area += p.x * q.y - q.x * p.y;
+  }
+  if (area == 0.0F) {
+    return;
+  }
+  const float sign = area > 0.0F ? 1.0F : -1.0F;
+  // The remaining polygon as indices; an edge between neighbours in it is
+  // an outline edge when they were neighbours in the original polygon.
+  std::vector<std::size_t> left(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    left[i] = i;
+  }
+  const auto outline = [n](std::size_t i, std::size_t j) {
+    return (i + 1) % n == j || (j + 1) % n == i;
+  };
+  std::size_t guard = 0;
+  std::size_t i = 0;
+  while (left.size() > 3 && guard < 2 * n * n) {
+    ++guard;
+    const std::size_t m = left.size();
+    const std::size_t ia = left[(i + m - 1) % m];
+    const std::size_t ib = left[i % m];
+    const std::size_t ic = left[(i + 1) % m];
+    const Vec2 a = points[ia];
+    const Vec2 b = points[ib];
+    const Vec2 cc = points[ic];
+    bool ear = Cross(a, b, cc) * sign > 0.0F;
+    for (std::size_t k = 0; ear && k < m; ++k) {
+      const std::size_t ik = left[k];
+      ear = ik == ia || ik == ib || ik == ic ||
+            !Inside(points[ik], a, b, cc, sign);
+    }
+    if (!ear) {
+      i = (i + 1) % m;
+      continue;
+    }
+    FillTriangle(a,
+                 b,
+                 cc,
+                 c,
+                 (outline(ia, ib) ? 1U : 0U) | (outline(ib, ic) ? 2U : 0U) |
+                     (outline(ic, ia) ? 4U : 0U));
+    left.erase(left.begin() + static_cast<std::ptrdiff_t>(i % m));
+    i = i % left.size();
+  }
+  if (left.size() == 3) {
+    const std::size_t ia = left[0];
+    const std::size_t ib = left[1];
+    const std::size_t ic = left[2];
+    FillTriangle(points[ia],
+                 points[ib],
+                 points[ic],
+                 c,
+                 (outline(ia, ib) ? 1U : 0U) | (outline(ib, ic) ? 2U : 0U) |
+                     (outline(ic, ia) ? 4U : 0U));
+  }
+}
+
+void DrawList::FillBand(std::span<const Vec2> top, std::span<const Vec2> bottom,
+                        const Color &c) {
+  const std::size_t n = std::min(top.size(), bottom.size());
+  for (std::size_t i = 1; i < n; ++i) {
+    // Quad t0 t1 b1 b0 as two triangles sharing the diagonal t0-b1; the
+    // ends of the band antialias too.
+    const std::uint32_t first_end = i == 1 ? 2U : 0U;
+    const std::uint32_t last_end = i + 1 == n ? 2U : 0U;
+    FillTriangle(top[i - 1], top[i], bottom[i], c, 1U | last_end);
+    FillTriangle(bottom[i], bottom[i - 1], top[i - 1], c, 1U | first_end);
+  }
+}
+
+void DrawList::Append(const DrawList &other) {
+  const Rect &c = clip();
+  const float a = alpha();
+  instances_.reserve(instances_.size() + other.instances_.size());
+  for (const Instance &src : other.instances_) {
+    const Rect clipped =
+        Rect{src.clip[0], src.clip[1], src.clip[2], src.clip[3]}.Intersect(c);
+    if (clipped.Empty()) {
+      continue;
+    }
+    Instance &inst = instances_.emplace_back(src);
+    inst.clip[0] = clipped.x0;
+    inst.clip[1] = clipped.y0;
+    inst.clip[2] = clipped.x1;
+    inst.clip[3] = clipped.y1;
+    if (a < 1.0F) {
+      // Alpha is the top byte of the packed RGBA8 colours.
+      const auto fade = [a](std::uint32_t rgba) {
+        const auto alpha8 = static_cast<float>(rgba >> 24U);
+        return (rgba & 0x00FFFFFFU) |
+               (static_cast<std::uint32_t>(std::lround(alpha8 * a)) << 24U);
+      };
+      inst.color = fade(inst.color);
+      inst.color2 = fade(inst.color2);
+    }
+  }
+}
+
 void DrawList::Glyph(const Rect &r, const Rect &uv, int page, const Color &c) {
   if (Culled(r)) {
     return;

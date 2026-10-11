@@ -142,15 +142,21 @@ struct PickItem {
   /// Higher layers win over lower ones when both are in reach (ships over
   /// stations over sectors).
   int layer = 0;
+  /// Direct-hit radius in pixels (e.g. half the drawn icon): an item hit
+  /// within its core ranks before every item only within its radius, so a
+  /// generous radius never takes the click from an icon right under the
+  /// pointer. 0: no core, ranked by layer only.
+  float core = 0.0F;
 };
 
-/// The item under `screen`: of the items within their radius, the highest
-/// layer, then the nearest.
+/// The item under `screen`: of the items within their radius, those hit
+/// within their core first, then the highest layer, then the nearest.
 auto PickNearest(const CanvasView &view, std::span<const PickItem> items,
                  Vec2 screen) -> std::optional<std::uint64_t>;
 
-/// Every item under `screen`, best first: higher layers first, then the
-/// nearest; ties keep the items' order. The first is PickNearest()'s.
+/// Every item under `screen`, best first: direct hits (within the core)
+/// first, then higher layers, then the nearest; ties keep the items'
+/// order. The first is PickNearest()'s.
 auto PickAll(const CanvasView &view, std::span<const PickItem> items,
              Vec2 screen) -> std::vector<std::uint64_t>;
 

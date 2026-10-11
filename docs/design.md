@@ -14,7 +14,7 @@ Goals, in priority order:
 4. A renderer that draws into a host engine's Vulkan frame, so X-conomy's future engine can composite the UI over its own scene.
 5. Deterministic headless rendering for tests (lavapipe, reference PNGs).
 
-Non-goals for now: right-to-left and bidirectional text (the text pipeline leaves room for it, section 7), IME composition beyond committed text, accessibility APIs, a visual designer, declarative UI files (gloomy's RON). Charts are limited to sparklines and bars inside cells until X-conomy needs more.
+Non-goals for now: right-to-left and bidirectional text (the text pipeline leaves room for it, section 7), IME composition beyond committed text, accessibility APIs, a visual designer, declarative UI files (gloomy's RON). Plots (section 11.4) cover what a trading game needs; scientific plotting beyond matplot++'s 2D model (3D, polar, geography, colour maps) is not drawn.
 
 ## 2. Guiding principle: deep data, accessible surface
 
@@ -104,6 +104,7 @@ Like X-conomy: public headers in `include/gloomy/<module>/`, implementation in `
 | `data` | `TableSource`, columnar tables, queries, search corpus and indices, fuzzy matcher | core (no graphics) |
 | `ui` | `Context`, node tree, layout, input, focus, theme, widgets, overlays, docking | core, gfx (draw list), text, data |
 | `platform` | SDL2 window, Vulkan surface, event translation, clipboard | gfx, ui, SDL2 |
+| `plot` (optional, `BUILD_PLOT`, library `gloomy::plot`) | matplot++ figures drawn by gloomy, axis formats, market series (section 11.4) | ui, matplot++ |
 
 `data` has no graphics dependency, so the X-conomy simulation side or tools can use the query and search engine without a GPU. `platform` is the only module that sees SDL2; a host engine replaces it.
 
@@ -133,12 +134,13 @@ struct Instance {
   uint32 color2;  // RGBA8, gradient end
   float stroke;   // border width, 0 = filled
   float soft;     // edge softness, > 1 for shadows
-  uint32 kind;    // rect, circle, line, glyph, image | atlas page << 8
+  uint32 kind;    // rect, circle, line, glyph, glass, hexagon, triangle
+                  // | atlas page << 8
   float3 pad;
 };
 ```
 
-The vertex shader expands the quad by the softness and antialiasing margin; the fragment shader evaluates the signed distance (rounded box with per-corner radii, circle, capsule line) or samples the atlas, multiplies by the clip-rect coverage and writes premultiplied alpha. Shadows are rectangles with large softness drawn before their box. Clipping per instance means clip changes never split a draw call, so a frame is one draw call per atlas page in submission order, and painter's order is exactly declaration order within a layer. Rounded clipping (clip radius) can be added to the clip vector later.
+The vertex shader expands the quad by the softness and antialiasing margin; the fragment shader evaluates the signed distance (rounded box with per-corner radii, circle, capsule line, hexagon, triangle) or samples the atlas, multiplies by the clip-rect coverage and writes premultiplied alpha. Shadows are rectangles with large softness drawn before their box. Clipping per instance means clip changes never split a draw call, so a frame is one draw call per atlas page in submission order, and painter's order is exactly declaration order within a layer. Rounded clipping (clip radius) can be added to the clip vector later.
 
 Instances are written to a host-visible, persistently mapped buffer per frame in flight, grown by doubling. A full-screen grid of 60 rows by 12 columns is about 10,000 glyph instances, under 1 MB per frame.
 
@@ -328,6 +330,27 @@ Cell renderers: text, number (right aligned, units, thousands separators, signed
 
 Tree view (shares the grid's flattened-tree view), property grid, forms with field validation and error display, date and time fields, charts beyond sparklines (line, bar, candlestick for price history), drag and drop between views, multiple windows, a theme editor.
 
+### 11.4 Plots
+
+The game needs more than line charts: price history, then stock exchanges and futures with line and area series, candlesticks (OHLC), bars and histograms, scatter, stacked series, an order book's depth chart, several y axes, time axes in game time, live series of thousands of points at 60 fps and range selection. `LineChart` (11.1) stays for the simple case; plots are module `plot` (library `gloomy::plot`, option `BUILD_PLOT`).
+
+Decision: gloomy owns a backend for matplot++ (MIT, fetched unmodified at a pinned commit, `cmake/ProjectDependencies.cmake`), drawn with gloomy's own SDF primitives and text. mpl-wgpu (a wgpu backend for matplot++ that also draws with SDFs, unfinished) was the reference, not a dependency. The alternative, growing `LineChart` into a native plotting module, would have meant inventing a plotting API; matplot++ gives apps a familiar MATLAB-like one (`plot`, `area`, `stairs`, `bar`, `hist`, `errorbar`, `yyaxis`-style second axes, subplots, titles, labels, legends) and a figure model to build on.
+
+How it fits. matplot++ renders through backends that either consume gnuplot commands or draw primitives (`draw_path`, `draw_text`, ...). Its primitive path is mostly stubs in the pinned version: only lines draw, ticks are marks without labels, there is no grid, legend or title, and layout is in fractions of the figure, sized for gnuplot pages rather than 80 pixel UI panels. mpl-wgpu patched about 1,200 lines into its copy of matplot++ to fill that in, and it reruns matplot++'s whole layout every frame. gloomy instead reads the figure model and draws it itself:
+
+- `Backend` (`include/gloomy/plot/backend.h`) makes figures gloomy's (`NewFigure()`): it accepts matplot++'s gnuplot commands and drops them, so no gnuplot is ever started, none of the unfinished primitive path runs, and matplot++ reports axis limits as set (an infinite end, as bars and histograms set them, stays automatic).
+- `Plot()` (`include/gloomy/plot/plot.h`) walks the figure: each axes (subplots by their positions, stacked areas aligned), its children by type (`line`, `stair`, `filled_area`, `error_bar`, `bars`, `histogram`, and gloomy's own), their data, styles, labels, titles and second y axis. Bars' protected data is read through a member pointer named in a derived class; nothing in matplot++ is changed.
+- Layout is in pixels from measured tick labels (gloomy's text system); colours come from the theme's palette unless the app set one; matplot++'s gnuplot-oriented defaults (black area edges, late fill colours) are themed.
+- Market series matplot++ lacks are `matplot::axes_object` subclasses in gloomy (`include/gloomy/plot/series.h`): `Candlesticks` and `DepthChart`; they sit in an axes beside matplot++'s own objects and report their limits to it.
+- Axis formats (`include/gloomy/plot/axis_format.h`): `NumberAxis()` and `TimeAxis()` (game days from day 0, ticks on whole minutes, hours or days: "14:05", "D3 14:00", "D3"; the tooltip in full); per axes in subplots (`PlotOptions::axes_x`).
+- Interaction like `LineChart`: wheel zoom and drag pan along x, double click resets, a crosshair with every series' value (OHLC for candles, depth for the book) in a tooltip, a legend that hides series, and Shift-drag selecting an x range (`PlotState::selection`).
+
+Performance. A scene (geometry as a `DrawList`, labels as text runs, the axes' frames) is built only when the figure's revision (`PlotOptions::revision`, bumped by the app on new data), the size, the view, the hidden series or the theme change; other frames append the kept geometry (`DrawList::Append()`: a copy under the current clip and alpha) and draw the labels. Sorted series are reduced to their first, lowest, highest and last point per pixel column. Measured (debug build, lavapipe machine): 20,000 points replay in 0.2 ms a frame and rebuild in 2.3 ms (3,900 instances).
+
+Primitives added for plots: `FillTriangle()` (an SDF over the edge lines; only outer edges antialias, inner ones cut at pixel centres with the top-left rule, so translucent fills made of triangles show no seams), `FillPolygon()` (ear clipping), `FillBand()` (the area between two polylines in O(n)) and `Polyline()` (round joints for wide lines).
+
+Not drawn (yet): 3D, polar and geographic axes, colour maps and images, contours, vector fields, text annotations, log scales; matplot++ objects of other kinds are skipped. Tests: `tests/plot/test_plot.cc` (time ticks, scene caching, zoom, legend, range selection, a live 20,000-point series) and images `plot_lines`, `plot_markets`, `plot_bars`, `plot_shapes`.
+
 ## 12. Document view
 
 Contracts are long, structured texts with references to game objects. The document model:
@@ -414,9 +437,10 @@ Built:
 - Section 2: `ExplainedLabel`, `Sparkline`, `SummaryCard` (glance), `SummaryPanel` (panel), `AnswerLine`, `ViewPreset` with shareable text encoding, `PresetBar`, `PresetSegments`, the detail-view widgets of `disclosure.h` (card, key facts, chip, big button, segmented control, remembered tabs, section header, form row, empty state), hub tiles in `dashboard.h` (`DashboardTile`: title, explained answer, sparkline, clickable item lines with "+N more", one action; `BeginTileGrid()` picks its columns from its width, `TileColumns()`), short lists in `list_rows.h` (`CellRow`/`CellHeader`: cells in fixed-width columns that scale with the theme and cut with an ellipsis, a status bar, selection, row actions that keep their slots; `QueueRow`: an ordered queue's Up/Down/Go/Remove with keys, disabled buttons saying why, `ApplyQueueEdit()`), a notification feed in `feed.h` (`NotificationFeed`: priority, source, age, fresh mark and actions per line, most urgent first, "+N more"; `FeedOrder()`), an action bar in `action_bar.h` (`ActionBar`: buttons that never cut a label, the least important switch to compact labels and then move into a More menu, `FitActions()`), the More menu button, dialogs with a summary, and `NavigationTarget` with `Navigate()` and `NavigationProvider` (the shared keyboard and search contract for views the app draws, such as the map).
 - Canvas (`Canvas`, `include/gloomy/ui/canvas.h`): a custom-draw area with a pan/zoom camera in double-precision world coordinates (drag, wheel around the pointer, +/- and Home while focused), clicks resolved to world points, `PickNearest()` and `PickAll()` over app-supplied pick items with layers, and `PickCycle` for clicking through items stacked under the pointer (each click at the same spot takes the next, "2/3" hint); the X-conomy galaxy and sector maps draw on it. Maps keep the keyboard contract of 2.5 through a `NavigationTarget`.
 - Icons: SVG icons (nanosvg) rasterised as coverage masks at exact pixel sizes into the glyph atlas and tinted when drawn, with optional halos, rotation (a ship along its heading) and exact placement for moving objects (`IconSet`, `IconCache`, `ui::Icon()`); the X-conomy maps and lists draw station and ship icons with them.
-- Line charts (`LineChart`: multiple series, second axis, legend toggles, crosshair values, zoom and pan, min/max decimation), the chart X-conomy's client draws with ImPlot today.
+- Line charts (`LineChart`: multiple series, second axis, legend toggles, crosshair values, zoom and pan, min/max decimation).
+- Plots (`gloomy::plot`, section 11.4): matplot++ figures drawn by gloomy (lines, stairs, areas, error bars, bars, histograms, second y axis, subplots), candlesticks and depth charts, time axes in game time, zoom, pan, crosshair, legend and range selection, scenes kept between frames.
 - Document view with outline jumps, links, search, highlights and text selection; the Finder (command palette and global search over tables, documents and commands).
 - Showcase (`gloomy_showcase`) and benchmark (`gloomy_bench`, section 14.1).
 
-Not built yet: right-pinned columns and cell-range selection in the grid; trigram index; bidirectional text; number, date and time fields; chart types beyond lines and sparklines (bars, candlesticks); the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
+Not built yet: right-pinned columns and cell-range selection in the grid; trigram index; bidirectional text; number, date and time fields; plot types beyond section 11.4's list; the windowed path runs in tests on a headless surface (`VK_EXT_headless_surface` on lavapipe) but has not been seen in a real window here, since this machine has no display.
 
