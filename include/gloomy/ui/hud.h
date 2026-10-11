@@ -33,10 +33,6 @@ void EdgeArrow(gfx::DrawList &list, Vec2 tip, Vec2 dir, float size, float width,
 void GlowLine(gfx::DrawList &list, Vec2 a, Vec2 b, float width,
               const Color &color, float glow);
 
-/// Horizontal scan lines over `rect`, `spacing` pixels apart.
-void Scanlines(gfx::DrawList &list, const Rect &rect, float spacing,
-               const Color &color);
-
 }  // namespace gloomy::ui
 
 #endif  // GLOOMY_UI_HUD_H_

@@ -41,15 +41,12 @@ TEST(HudTest, EdgePointsLieOnTheInsetRectangle) {
   EXPECT_EQ(still.x, centre.x);
 }
 
-TEST(HudTest, ArrowsGlowAndScanlines) {
+TEST(HudTest, ArrowsAndGlow) {
   gfx::DrawList list;
   EdgeArrow(list, {50, 50}, {1, 0}, 10, 2, Color::Rgb(0xFF0000));
   EXPECT_EQ(list.instances().size(), 2U);
   GlowLine(list, {0, 0}, {10, 0}, 1, Color::Rgb(0xFFFFFF), 3);
   EXPECT_EQ(list.instances().size(), 5U);
-  gfx::DrawList lines;
-  Scanlines(lines, {0, 0, 10, 30}, 3, Color::Rgba(0x00000020));
-  EXPECT_EQ(lines.instances().size(), 10U);
 }
 
 }  // namespace

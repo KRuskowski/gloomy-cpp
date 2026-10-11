@@ -38,7 +38,7 @@ TEST(SkinTest, ReadsTheKeysItSharesWithHudSkins) {
   EXPECT_EQ(s.good, Color::Rgb(0x40FF40));
   EXPECT_FLOAT_EQ(s.frame, 4.0F) << "frame is twice the HUD's line";
   EXPECT_FLOAT_EQ(s.glow, 3.0F);
-  EXPECT_FLOAT_EQ(s.scanlines, 0.06F);
+  // Scan lines are gone; old skins that still set them parse cleanly.
   // Untouched keys keep the base.
   EXPECT_EQ(s.paper, PanelSkin{}.paper);
 }

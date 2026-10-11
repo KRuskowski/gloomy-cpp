@@ -4,7 +4,6 @@
 #include <cmath>
 #include <string>
 
-#include "gloomy/ui/hud.h"
 #include "gloomy/ui/widgets.h"
 #include "ui/widget_util.h"
 
@@ -129,9 +128,6 @@ auto DashboardTile(Context &ctx, std::string_view label, const TileSpec &spec)
           const Color paper = lit ? Mix(s.paper, s.ink, 0.06F) : s.paper;
           PaintFrame(pc.list, r, s, paper, lit ? s.ink : s.ink_muted);
           const Rect in = r.Inset(s.frame);
-          if (s.scanlines > 0.0F) {
-            Scanlines(pc.list, in, 3.0F, s.ink.WithAlpha(s.scanlines));
-          }
           pc.list.FillRect(
               {in.x0 + 1, in.y0 + 4, in.x0 + 1 + kTileEdge, in.y1 - 4},
               edge,

@@ -336,12 +336,12 @@ constexpr std::string_view kMilitarySkin =
     "primary = #9CC870\nsecondary = #6E8C5A\nown = #9CC870\n"
     "warning = #E8B040\nalert = #E85A3C\npanel_paper = #141A10\n"
     "panel_text = #D8E0C8\npanel_text_muted = #8C9878\nline = 2\n"
-    "panel_bolt = 2.5\npanel_corner = 2\nscanlines = 0.05";
+    "panel_bolt = 2.5\npanel_corner = 2";
 constexpr std::string_view kRaiderSkin =
     "primary = #FF5A3C\nsecondary = #A04A3A\nown = #FFB040\n"
     "warning = #FFB040\nalert = #FF2E2E\npanel_paper = #1C0E0C\n"
     "panel_text = #F0D8D0\npanel_text_muted = #A08078\nline = 1.5\n"
-    "panel_bolt = 0\npanel_corner = 0\nscanlines = 0.1";
+    "panel_bolt = 0\npanel_corner = 0";
 
 void SkinnedTiles(Context &ctx) {
   static const PanelSkin kMilitary =
