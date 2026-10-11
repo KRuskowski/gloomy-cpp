@@ -159,6 +159,11 @@ class DrawList {
   /// @param[in] uv Normalised atlas rectangle u0, v0, u1, v1.
   void Glyph(const Rect &r, const Rect &uv, int page, const Color &c);
 
+  /// Appends `other`'s primitives (recorded elsewhere, e.g. a cached plot)
+  /// under this list's clip and alpha: a primitive outside the clip is
+  /// dropped, the others are clipped to it and faded by the alpha.
+  void Append(const DrawList &other);
+
   /// Intersects the clip rectangle with `r` until the matching PopClip().
   void PushClip(const Rect &r);
 

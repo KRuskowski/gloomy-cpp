@@ -201,3 +201,27 @@ if(BUILD_PLATFORM_SDL2)
   target_compile_definitions(gloomy_app PRIVATE GLOOMY_HAVE_SDL2=1)
 endif()
 gl_configure_target(gloomy_app)
+
+# Plots: matplot++ figures drawn with gloomy's primitives and text
+# (docs/design.md section 11.4). Optional: it fetches matplot++.
+if(BUILD_PLOT)
+  add_library(gloomy_plot STATIC
+    src/gloomy/plot/axis_format.cc
+    src/gloomy/plot/backend.cc
+    src/gloomy/plot/plot.cc
+    src/gloomy/plot/series.cc
+  )
+  add_library(gloomy::plot ALIAS gloomy_plot)
+  target_include_directories(gloomy_plot
+    PUBLIC
+      ${GL_PUBLIC_BUILD_INCLUDE_DIRS}
+    PRIVATE
+      ${GL_PRIVATE_BUILD_INCLUDE_DIRS}
+  )
+  target_link_libraries(gloomy_plot
+    PUBLIC
+      gloomy::gloomy
+      matplot
+  )
+  gl_configure_target(gloomy_plot)
+endif()

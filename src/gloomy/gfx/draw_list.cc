@@ -293,6 +293,34 @@ void DrawList::FillBand(std::span<const Vec2> top, std::span<const Vec2> bottom,
   }
 }
 
+void DrawList::Append(const DrawList &other) {
+  const Rect &c = clip();
+  const float a = alpha();
+  instances_.reserve(instances_.size() + other.instances_.size());
+  for (const Instance &src : other.instances_) {
+    const Rect clipped =
+        Rect{src.clip[0], src.clip[1], src.clip[2], src.clip[3]}.Intersect(c);
+    if (clipped.Empty()) {
+      continue;
+    }
+    Instance &inst = instances_.emplace_back(src);
+    inst.clip[0] = clipped.x0;
+    inst.clip[1] = clipped.y0;
+    inst.clip[2] = clipped.x1;
+    inst.clip[3] = clipped.y1;
+    if (a < 1.0F) {
+      // Alpha is the top byte of the packed RGBA8 colours.
+      const auto fade = [a](std::uint32_t rgba) {
+        const auto alpha8 = static_cast<float>(rgba >> 24U);
+        return (rgba & 0x00FFFFFFU) |
+               (static_cast<std::uint32_t>(std::lround(alpha8 * a)) << 24U);
+      };
+      inst.color = fade(inst.color);
+      inst.color2 = fade(inst.color2);
+    }
+  }
+}
+
 void DrawList::Glyph(const Rect &r, const Rect &uv, int page, const Color &c) {
   if (Culled(r)) {
     return;
