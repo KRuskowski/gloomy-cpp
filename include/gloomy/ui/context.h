@@ -263,8 +263,13 @@ class Context {
   /// Where the pointer was last pressed.
   auto press_pos() const -> Vec2 { return press_pos_; }
 
-  /// Modifier keys of the latest input event.
+  /// Modifier keys of the latest input event. Pressing or releasing a
+  /// modifier on its own updates them too (a key event with Key::kNone).
   auto mods() const -> std::uint8_t { return mods_; }
+
+  /// Whether modifier `mod` is held, as of this frame's events: with
+  /// IsKeyDown() for continuous control (Shift+W held to strafe).
+  auto IsModDown(Mod mod) const -> bool { return (mods_ & mod) != 0; }
 
   /// Modifier keys held at the last pointer press.
   auto press_mods() const -> std::uint8_t { return press_mods_; }
@@ -317,7 +322,10 @@ class Context {
 
   /// Forgets every held key, e.g. when a mode that reads them is left or
   /// the window loses focus.
-  void ReleaseKeys() { held_keys_.fill(false); }
+  void ReleaseKeys() {
+    held_keys_.fill(false);
+    mods_ = kModNone;
+  }
 
   /// Text typed this frame; taking it empties it.
   auto TakeText() -> std::string;

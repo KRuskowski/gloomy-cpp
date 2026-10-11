@@ -68,6 +68,22 @@ auto TranslateKey(SDL_Keycode key) -> ui::Key {
   }
 }
 
+auto IsModifierKey(SDL_Keycode key) -> bool {
+  switch (key) {
+    case SDLK_LSHIFT:
+    case SDLK_RSHIFT:
+    case SDLK_LCTRL:
+    case SDLK_RCTRL:
+    case SDLK_LALT:
+    case SDLK_RALT:
+    case SDLK_LGUI:
+    case SDLK_RGUI:
+      return true;
+    default:
+      return false;
+  }
+}
+
 auto TranslateMods(Uint16 mod) -> std::uint8_t {
   std::uint8_t m = ui::kModNone;
   if ((mod & KMOD_SHIFT) != 0) {
@@ -131,7 +147,17 @@ auto TranslateEvent(const SDL_Event &event, float scale)
     case SDL_KEYUP: {
       const ui::Key key = TranslateKey(event.key.keysym.sym);
       if (key == ui::Key::kNone) {
-        return std::nullopt;
+        if (!IsModifierKey(event.key.keysym.sym)) {
+          return std::nullopt;
+        }
+        // A modifier alone: the state after it, so held Shift is seen.
+        InputEvent e = InputEvent::KeyDown(
+            ui::Key::kNone,
+            TranslateMods(static_cast<Uint16>(SDL_GetModState())));
+        if (event.type == SDL_KEYUP) {
+          e.type = InputEvent::Type::kKeyUp;
+        }
+        return e;
       }
       InputEvent e =
           InputEvent::KeyDown(key, TranslateMods(event.key.keysym.mod));

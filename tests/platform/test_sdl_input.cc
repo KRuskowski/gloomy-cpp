@@ -46,6 +46,24 @@ TEST(SdlInputTest, KeysAndModifiers) {
   EXPECT_FALSE(TranslateEvent(e, 1.0F).has_value());
 }
 
+TEST(SdlInputTest, ModifierAloneCarriesTheHeldState) {
+  SDL_Event e{};
+  e.type = SDL_KEYDOWN;
+  e.key.keysym.sym = SDLK_LSHIFT;
+  SDL_SetModState(KMOD_LSHIFT);
+  auto ev = TranslateEvent(e, 1.0F);
+  ASSERT_TRUE(ev.has_value());
+  EXPECT_EQ(ev->type, ui::InputEvent::Type::kKeyDown);
+  EXPECT_EQ(ev->key, ui::Key::kNone);
+  EXPECT_EQ(ev->mods, ui::kModShift);
+  e.type = SDL_KEYUP;
+  SDL_SetModState(KMOD_NONE);
+  ev = TranslateEvent(e, 1.0F);
+  ASSERT_TRUE(ev.has_value());
+  EXPECT_EQ(ev->type, ui::InputEvent::Type::kKeyUp);
+  EXPECT_EQ(ev->mods, ui::kModNone);
+}
+
 TEST(SdlInputTest, TextAndWheel) {
   SDL_Event e{};
   e.type = SDL_TEXTINPUT;

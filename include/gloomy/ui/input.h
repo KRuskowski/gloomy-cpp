@@ -116,6 +116,8 @@ struct InputEvent {
   PointerButton button = PointerButton::kLeft;
   /// Wheel movement in lines; positive y scrolls content up (wheel away).
   Vec2 wheel;
+  /// kKeyDown/kKeyUp: the key; kNone when only a modifier was pressed or
+  /// released, `mods` then being the modifiers held after it.
   Key key = Key::kNone;
   std::uint8_t mods = kModNone;
   bool repeat = false;
