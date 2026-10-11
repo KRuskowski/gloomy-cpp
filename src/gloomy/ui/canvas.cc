@@ -144,53 +144,65 @@ auto Canvas(Context &ctx, std::string_view label, CanvasState &state,
   return result;
 }
 
+namespace {
+
+/// An item within reach of the pointer, and how it ranks.
+struct PickHit {
+  std::uint64_t key = 0;
+  bool direct = false;
+  int layer = 0;
+  float d2 = 0.0F;
+};
+
+auto HitOf(const CanvasView &view, const PickItem &item, Vec2 screen)
+    -> std::optional<PickHit> {
+  const Vec2 p = view.ToScreen(item.pos);
+  const float dx = p.x - screen.x;
+  const float dy = p.y - screen.y;
+  const float d2 = dx * dx + dy * dy;
+  if (d2 > item.radius * item.radius) {
+    return std::nullopt;
+  }
+  const bool direct = item.core > 0.0F && d2 <= item.core * item.core;
+  return PickHit{item.key, direct, item.layer, d2};
+}
+
+auto Better(const PickHit &a, const PickHit &b) -> bool {
+  if (a.direct != b.direct) {
+    return a.direct;
+  }
+  return a.layer != b.layer ? a.layer > b.layer : a.d2 < b.d2;
+}
+
+}  // namespace
+
 auto PickNearest(const CanvasView &view, std::span<const PickItem> items,
                  Vec2 screen) -> std::optional<std::uint64_t> {
-  std::optional<std::uint64_t> best;
-  int best_layer = 0;
-  float best_d2 = 0.0F;
+  std::optional<PickHit> best;
   for (const PickItem &item : items) {
-    const Vec2 p = view.ToScreen(item.pos);
-    const float dx = p.x - screen.x;
-    const float dy = p.y - screen.y;
-    const float d2 = dx * dx + dy * dy;
-    if (d2 > item.radius * item.radius) {
-      continue;
-    }
-    if (!best || item.layer > best_layer ||
-        (item.layer == best_layer && d2 < best_d2)) {
-      best = item.key;
-      best_layer = item.layer;
-      best_d2 = d2;
+    const std::optional<PickHit> hit = HitOf(view, item, screen);
+    if (hit && (!best || Better(*hit, *best))) {
+      best = hit;
     }
   }
-  return best;
+  if (!best) {
+    return std::nullopt;
+  }
+  return best->key;
 }
 
 auto PickAll(const CanvasView &view, std::span<const PickItem> items,
              Vec2 screen) -> std::vector<std::uint64_t> {
-  struct Hit {
-    std::uint64_t key;
-    int layer;
-    float d2;
-  };
-
-  std::vector<Hit> hits;
+  std::vector<PickHit> hits;
   for (const PickItem &item : items) {
-    const Vec2 p = view.ToScreen(item.pos);
-    const float dx = p.x - screen.x;
-    const float dy = p.y - screen.y;
-    const float d2 = dx * dx + dy * dy;
-    if (d2 <= item.radius * item.radius) {
-      hits.push_back({item.key, item.layer, d2});
+    if (const std::optional<PickHit> hit = HitOf(view, item, screen)) {
+      hits.push_back(*hit);
     }
   }
-  std::ranges::stable_sort(hits, [](const Hit &a, const Hit &b) {
-    return a.layer != b.layer ? a.layer > b.layer : a.d2 < b.d2;
-  });
+  std::ranges::stable_sort(hits, Better);
   std::vector<std::uint64_t> keys;
   keys.reserve(hits.size());
-  for (const Hit &hit : hits) {
+  for (const PickHit &hit : hits) {
     keys.push_back(hit.key);
   }
   return keys;

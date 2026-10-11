@@ -156,6 +156,30 @@ TEST(CanvasPickTest, PickAllOrdersByLayerThenDistance) {
   EXPECT_TRUE(PickAll(view, items, {5, 95}).empty());
 }
 
+// A gate with a generous radius over a station whose icon is right under
+// the pointer: the direct hit wins, the gate still wins in its halo and
+// over the disc around both.
+TEST(CanvasPickTest, DirectHitsWithinTheCoreRankFirst) {
+  CanvasView view;
+  view.rect = {0, 0, 100, 100};
+  view.zoom = 1.0;
+  const PickItem items[] = {
+      {.key = 1, .pos = {0, 0}, .radius = 50, .layer = 0},
+      {.key = 2, .pos = {0, 0}, .radius = 18, .layer = 5, .core = 7},
+      {.key = 3, .pos = {16, 0}, .radius = 14, .layer = 3, .core = 6},
+  };
+  // On the station's icon, 16 px from the gate.
+  EXPECT_EQ(PickNearest(view, items, {66, 50}), 3U);
+  EXPECT_EQ(PickAll(view, items, {66, 50}),
+            (std::vector<std::uint64_t>{3, 2, 1}));
+  // Between both, outside either core: the higher layer.
+  EXPECT_EQ(PickNearest(view, items, {58, 50}), 2U);
+  // In the gate's halo, off the station: the gate, not the disc.
+  EXPECT_EQ(PickNearest(view, items, {50, 64}), 2U);
+  // Out of both: the disc.
+  EXPECT_EQ(PickNearest(view, items, {50, 80}), 1U);
+}
+
 TEST(CanvasPickTest, ClicksAtOneSpotCycleThroughTheStack) {
   PickCycle cycle;
   EXPECT_FALSE(cycle.current().has_value());
