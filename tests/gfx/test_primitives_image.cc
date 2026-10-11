@@ -110,5 +110,58 @@ TEST_F(PrimitivesImageTest, OpaqueRectCoversExactPixels) {
   EXPECT_EQ(image.At(6, 5)[0], 0x1E);
 }
 
+// Plot shapes: a polyline with round joints, an antialiased triangle, a
+// concave polygon and a band (an area chart), both half transparent.
+TEST_F(PrimitivesImageTest, PlotShapesMatchReference) {
+  DrawList list;
+  const std::array<Vec2, 6> line{
+      {{16, 80}, {50, 30}, {84, 70}, {118, 20}, {152, 60}, {186, 40}}};
+  list.Polyline(line, 3.0F, Color::Rgb(0x89B4FA));
+  list.FillTriangle({210, 80}, {250, 16}, {300, 70}, Color::Rgb(0xF38BA8));
+  // An L: concave, so the ears matter.
+  const std::array<Vec2, 6> ell{
+      {{16, 110}, {80, 110}, {80, 130}, {40, 130}, {40, 190}, {16, 190}}};
+  list.FillPolygon(ell, Color::Rgba(0xA6E3A1A0));
+  std::array<Vec2, 8> top{};
+  std::array<Vec2, 8> bottom{};
+  for (std::size_t i = 0; i < top.size(); ++i) {
+    const float x = 100.0F + 28.0F * static_cast<float>(i);
+    top[i] = {x, 150.0F - 30.0F * std::sin(0.9F * static_cast<float>(i))};
+    bottom[i] = {x, 190.0F};
+  }
+  list.FillBand(top, bottom, Color::Rgba(0xF9E2AF80));
+  list.Polyline(top, 1.5F, Color::Rgb(0xF9E2AF));
+  const Image image = Render(list, {320, 200});
+  testing::ExpectMatchesReference(image, "plot_shapes");
+}
+
+// Translucent fills made of triangles show no seams where they share an
+// edge: every pixel inside has the same colour.
+TEST_F(PrimitivesImageTest, TriangleFillsHaveNoSeams) {
+  DrawList list;
+  const std::array<Vec2, 4> quad{{{4, 4}, {60, 8}, {56, 60}, {6, 52}}};
+  list.FillPolygon(quad, Color::Rgba(0xFFFFFF80));
+  std::array<Vec2, 5> top{};
+  std::array<Vec2, 5> bottom{};
+  for (std::size_t i = 0; i < top.size(); ++i) {
+    const float x = 70.0F + 13.0F * static_cast<float>(i);
+    top[i] = {x, 10.0F + 7.0F * static_cast<float>(i % 2)};
+    bottom[i] = {x, 60.0F};
+  }
+  list.FillBand(top, bottom, Color::Rgba(0xFFFFFF80));
+  const Image image = Render(list, {128, 64});
+  const std::uint8_t *inside = image.At(30, 30);
+  for (int y = 20; y < 45; ++y) {
+    for (int x = 15; x < 50; ++x) {
+      ASSERT_EQ(image.At(x, y)[0], inside[0]) << x << "," << y;
+    }
+    for (int x = 74; x < 118; ++x) {
+      ASSERT_EQ(image.At(x, y)[0], inside[0]) << x << "," << y;
+    }
+  }
+  // Half covered: about halfway between background and white.
+  EXPECT_NEAR(inside[0], (0x1E + 0xFF) / 2, 3);
+}
+
 }  // namespace
 }  // namespace gloomy::gfx

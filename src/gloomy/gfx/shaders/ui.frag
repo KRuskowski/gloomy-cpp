@@ -33,6 +33,7 @@ const uint kLine = 2u;
 const uint kGlyph = 3u;
 const uint kGlass = 4u;
 const uint kHexagon = 5u;
+const uint kTriangle = 6u;
 
 // Rounded box; radii are top-left, top-right, bottom-right, bottom-left
 // with y pointing down.
@@ -51,6 +52,38 @@ float Hexagon(vec2 p, float r) {
   p -= 2.0 * min(dot(k.xy, p), 0.0) * k.xy;
   p -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
   return length(p) * sign(p.y);
+}
+
+// Distance of p from the line through a and b, positive on the side away
+// from c; 0 when the edge is degenerate.
+float EdgeDistance(vec2 p, vec2 a, vec2 b, vec2 c) {
+  vec2 e = b - a;
+  float len = length(e);
+  if (len < 1e-6) {
+    return -1e9;
+  }
+  vec2 n = vec2(e.y, -e.x) / len;
+  if (dot(c - a, n) > 0.0) {
+    n = -n;
+  }
+  return dot(p - a, n);
+}
+
+// Coverage of pixel p by a triangle: antialiased across the edges in
+// `aa` (bits 0: a-b, 1: b-c, 2: c-a), hard at the pixel centre across the
+// others, so that triangles sharing those tile without seams.
+float TriangleCoverage(vec2 p, vec2 a, vec2 b, vec2 c, uint aa) {
+  float d[3] = float[](EdgeDistance(p, a, b, c), EdgeDistance(p, b, c, a),
+                       EdgeDistance(p, c, a, b));
+  float cover = 1.0;
+  for (int i = 0; i < 3; ++i) {
+    if ((aa & (1u << uint(i))) != 0u) {
+      cover *= clamp(0.5 - d[i], 0.0, 1.0);
+    } else {
+      cover *= d[i] <= 0.0 ? 1.0 : 0.0;
+    }
+  }
+  return cover;
 }
 
 // Coverage of a pixel at signed distance d from the edge.
@@ -95,6 +128,9 @@ void main() {
   if (kind == kGlyph) {
     float page = float(v_kind >> 8u);
     alpha = texture(u_atlas, vec3(v_uv, page)).r;
+  } else if (kind == kTriangle) {
+    alpha = TriangleCoverage(v_local, v_radii.xy, v_radii.zw, v_glass,
+                             uint(stroke + 0.5));
   } else {
     float d;
     if (kind == kCircle) {

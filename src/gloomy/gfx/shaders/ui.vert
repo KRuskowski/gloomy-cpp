@@ -41,6 +41,7 @@ const uint kLine = 2u;
 const uint kGlyph = 3u;
 const uint kGlass = 4u;
 const uint kHexagon = 5u;
+const uint kTriangle = 6u;
 
 void main() {
   vec2 corner = kCorners[gl_VertexIndex];
@@ -61,6 +62,15 @@ void main() {
     pos = (a + b) * 0.5 + dir * local.x + nrm * local.y;
     v_local = local;
     v_half = half_size;
+  } else if (kind == kTriangle) {
+    // The bounds and one antialiasing pixel; the fragment shader measures
+    // from the vertices in pixels (radii: first two, uv: third).
+    vec2 lo = a_rect.xy - 1.0;
+    vec2 hi = a_rect.zw + 1.0;
+    pos = mix(lo, hi, corner);
+    v_local = pos;
+    v_half = vec2(0.0);
+    v_glass = a_uv.xy;
   } else if (kind == kGlyph) {
     pos = mix(a_rect.xy, a_rect.zw, corner);
     v_uv = mix(a_uv.xy, a_uv.zw, corner);
