@@ -48,6 +48,31 @@ TEST(WidgetsTest, KeysStayHeldUntilReleased) {
   EXPECT_FALSE(h.ctx().IsKeyDown(Key::kD));
 }
 
+TEST(WidgetsTest, ModifiersAloneAreHeldNotPressed) {
+  UiHarness h;
+  auto ui = [](Context &) {
+  };
+  // Shift pressed on its own: held, but no key press to consume.
+  h.Frame(ui, {InputEvent::KeyDown(Key::kNone, kModShift)});
+  EXPECT_TRUE(h.ctx().IsModDown(kModShift));
+  EXPECT_FALSE(h.ctx().IsModDown(kModCtrl));
+  EXPECT_FALSE(h.ctx().IsKeyDown(Key::kNone));
+  std::uint8_t mods = 0;
+  EXPECT_FALSE(h.ctx().ConsumeKeyAnyMods(Key::kNone, mods));
+  // Shift+W, then Shift let go while W stays down.
+  h.Frame(ui, {InputEvent::KeyDown(Key::kW, kModShift)});
+  EXPECT_TRUE(h.ctx().IsKeyDown(Key::kW));
+  EXPECT_TRUE(h.ctx().IsModDown(kModShift));
+  InputEvent up = InputEvent::KeyDown(Key::kNone);
+  up.type = InputEvent::Type::kKeyUp;
+  h.Frame(ui, {up});
+  EXPECT_TRUE(h.ctx().IsKeyDown(Key::kW));
+  EXPECT_FALSE(h.ctx().IsModDown(kModShift));
+  h.Frame(ui, {InputEvent::KeyDown(Key::kNone, kModShift)});
+  h.ctx().ReleaseKeys();
+  EXPECT_FALSE(h.ctx().IsModDown(kModShift));
+}
+
 TEST(WidgetsTest, PressThenReleaseElsewhereDoesNotClick) {
   UiHarness h;
   bool clicked = false;

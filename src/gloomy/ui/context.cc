@@ -217,6 +217,11 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         break;
       }
       case InputEvent::Type::kKeyDown:
+        // A modifier on its own (Shift pressed or released) changes only
+        // mods(): it is no key press.
+        if (e.key == Key::kNone) {
+          break;
+        }
         focus_visible_ = true;
         if (e.key == Key::kTab && !prev_want_tab_ &&
             (e.mods & (kModCtrl | kModAlt)) == 0) {
@@ -227,6 +232,9 @@ void Context::ProcessEvents(std::span<const InputEvent> events) {
         keys_.push_back({e.key, e.mods, false});
         break;
       case InputEvent::Type::kKeyUp:
+        if (e.key == Key::kNone) {
+          break;
+        }
         held_keys_[static_cast<std::size_t>(e.key)] = false;
         break;
       case InputEvent::Type::kText:
