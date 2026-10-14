@@ -173,6 +173,36 @@ TEST_F(PlotBehaviourTest, ShiftDragSelectsARangeAndDragPans) {
   EXPECT_GT(state_.x0, 10.0);
 }
 
+// The app replaces its figure while the pointer is over the plot: the
+// tooltip reads the values under the pointer from the scene painted last
+// frame, before this frame's paint rebuilds it, so the scene keeps the old
+// figure alive until then (under ASan, a raw pointer was a use after free).
+TEST_F(PlotBehaviourTest, AReplacedFigureLivesUntilTheSceneIsRebuilt) {
+  const Rect area = Area();
+  const Vec2 c = area.Center();
+  Frame({InputEvent::Move(c.x, c.y)});
+  Frame();
+  ASSERT_TRUE(result_.hovered);
+  const std::weak_ptr<matplot::figure_type> old = figure_;
+  ore_line_.reset();
+  figure_ = NewFigure();
+  std::vector<double> y(days_.size(), 42.0);
+  figure_->current_axes()->plot(days_, y)->display_name("Water");
+  EXPECT_FALSE(old.expired()) << "the scene still points into it";
+  ++options_.revision;
+  Frame();
+  EXPECT_TRUE(result_.hovered);
+  EXPECT_TRUE(old.expired()) << "released once the scene was rebuilt";
+  ASSERT_TRUE(state_.scene);
+  EXPECT_EQ(&*state_.scene->figure, figure_.get());
+  ASSERT_EQ(state_.scene->frames.size(), 1U);
+  EXPECT_EQ(&*state_.scene->frames.front().axes,
+            figure_->children().front().get());
+  // And the tooltip reads the new figure from now on.
+  Frame();
+  EXPECT_TRUE(result_.hovered);
+}
+
 // A live series: twenty thousand points, updated, rebuilt once per update
 // and replayed (a copy of the kept geometry) on other frames.
 TEST(PlotPerformanceTest, ALiveSeriesOfThousandsOfPointsReplays) {

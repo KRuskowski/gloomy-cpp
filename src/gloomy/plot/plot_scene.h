@@ -5,6 +5,7 @@
 // tests look into it.
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,7 +23,9 @@ namespace gloomy::plot {
 
 /// One axes laid out: its plot area and the ranges it shows.
 struct AxesFrame {
-  matplot::axes_type *axes = nullptr;
+  /// Shared with the figure: the scene outlives a figure the app replaced
+  /// or an axes it removed, and the next frame's tooltip still reads it.
+  std::shared_ptr<matplot::axes_type> axes;
   /// Its index among the figure's axes.
   std::size_t index = 0;
   Rect area;
@@ -70,7 +73,9 @@ struct PlotScene {
   double x1 = 1.0;
   std::size_t hidden = 0;
   const ui::Theme *theme = nullptr;
-  const matplot::figure_type *figure = nullptr;
+  /// Kept alive with the scene: its frames point into it until the next
+  /// build, and Plot() reads the values under the pointer before then.
+  std::shared_ptr<matplot::figure_type> figure;
   bool valid = false;
   // What it holds.
   gfx::DrawList geometry;

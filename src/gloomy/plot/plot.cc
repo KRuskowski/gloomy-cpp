@@ -854,14 +854,16 @@ struct Gutter {
 /// Lays one axes out in `outer`: labels around, ticks, grid, series. The
 /// tick label columns are at least as wide as `min` (so that stacked axes
 /// line up). Returns how wide they needed to be.
-auto BuildAxes(Build &b, matplot::axes_type &ax, std::size_t axes_index,
-               const Rect &outer, Gutter min = {}) -> Gutter {
+auto BuildAxes(Build &b, const std::shared_ptr<matplot::axes_type> &handle,
+               std::size_t axes_index, const Rect &outer, Gutter min = {})
+    -> Gutter {
+  matplot::axes_type &ax = *handle;
   const ui::Theme &t = b.theme;
   const ui::Palette &c = t.colors;
   const float small = t.metrics.small_font_size;
   const auto font = t.fonts.sans;
   AxesFrame f;
-  f.axes = &ax;
+  f.axes = handle;
   f.index = axes_index;
   Ranges(b, f);
   // Vertical layout first: the ticks depend on the area's height.
@@ -1095,7 +1097,8 @@ auto AxesRect(const matplot::figure_type &fig, std::size_t i, const Rect &r)
 }
 
 /// Rebuilds the scene if what it shows changed.
-void UpdateScene(ui::PaintContext &pc, const Rect &r, matplot::figure_type &fig,
+void UpdateScene(ui::PaintContext &pc, const Rect &r,
+                 const std::shared_ptr<matplot::figure_type> &fig,
                  PlotState &state, const PlotOptions &options) {
   if (!state.scene) {
     state.scene = std::make_shared<PlotScene>();
@@ -1105,7 +1108,7 @@ void UpdateScene(ui::PaintContext &pc, const Rect &r, matplot::figure_type &fig,
   if (s.valid && s.revision == options.revision && s.rect == r &&
       s.zoomed == state.zoomed &&
       (!state.zoomed || (s.x0 == state.x0 && s.x1 == state.x1)) &&
-      s.hidden == hidden && s.theme == &pc.theme && s.figure == &fig) {
+      s.hidden == hidden && s.theme == &pc.theme && s.figure == fig) {
     return;
   }
   s.geometry.Clear();
@@ -1118,10 +1121,10 @@ void UpdateScene(ui::PaintContext &pc, const Rect &r, matplot::figure_type &fig,
   s.x1 = state.x1;
   s.hidden = hidden;
   s.theme = &pc.theme;
-  s.figure = &fig;
+  s.figure = fig;
   s.valid = true;
   ++state.builds;
-  const std::size_t n = fig.children().size();
+  const std::size_t n = fig->children().size();
   std::vector<Rect> outer(n);
   std::vector<Gutter> min(n);
   if (n > 1) {
@@ -1132,8 +1135,8 @@ void UpdateScene(ui::PaintContext &pc, const Rect &r, matplot::figure_type &fig,
     Build measure{pc.theme, pc.text, state, options, scratch};
     std::vector<Gutter> needed(n);
     for (std::size_t i = 0; i < n; ++i) {
-      outer[i] = AxesRect(fig, i, r);
-      needed[i] = BuildAxes(measure, *fig.children()[i], i, outer[i]);
+      outer[i] = AxesRect(*fig, i, r);
+      needed[i] = BuildAxes(measure, fig->children()[i], i, outer[i]);
     }
     for (std::size_t i = 0; i < n; ++i) {
       for (std::size_t j = 0; j < n; ++j) {
@@ -1150,7 +1153,7 @@ void UpdateScene(ui::PaintContext &pc, const Rect &r, matplot::figure_type &fig,
   }
   Build b{pc.theme, pc.text, state, options, s};
   for (std::size_t i = 0; i < n; ++i) {
-    BuildAxes(b, *fig.children()[i], i, outer[i], min[i]);
+    BuildAxes(b, fig->children()[i], i, outer[i], min[i]);
   }
 }
 
@@ -1450,7 +1453,7 @@ auto Plot(ui::Context &ctx, std::string_view label,
       node,
       [fig = figure, &state, options, hover, mouse](ui::PaintContext &pc,
                                                     const Rect &r) {
-        UpdateScene(pc, r, *fig, state, options);
+        UpdateScene(pc, r, fig, state, options);
         PlotScene &s = *state.scene;
         pc.list.Append(s.geometry);
         for (const SceneText &text : s.texts) {

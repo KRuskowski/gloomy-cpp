@@ -85,7 +85,8 @@ struct PlotResult {
   bool selection_changed = false;
 };
 
-/// Draws `figure` (which must stay alive until the frame ends).
+/// Draws `figure`. The state keeps the figure it last drew alive (its scene
+/// points into it), so the app may replace or drop a figure at any time.
 auto Plot(ui::Context &ctx, std::string_view label,
           const std::shared_ptr<matplot::figure_type> &figure, PlotState &state,
           const PlotOptions &options = {}) -> PlotResult;
